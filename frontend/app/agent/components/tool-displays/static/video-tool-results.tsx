@@ -2,6 +2,7 @@
 
 import { memo } from 'react'
 import { AlertTriangle, CheckCircle2, Clock, Loader2 } from 'lucide-react'
+import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 
 interface ResultProps {
@@ -108,11 +109,34 @@ export const VideoListResult = memo(function VideoListResult({ output }: ResultP
 export const VideoTranscriptResult = memo(function VideoTranscriptResult({ output }: ResultProps) {
   if (output?.error) return <ErrorLine message={output.error} />
 
+  const transcript: string = output?.transcript ?? output?.text ?? ''
+
+  if (!transcript) {
+    return <p className="text-xs text-muted-foreground">Empty transcript.</p>
+  }
+
   return (
     <div className="space-y-1.5">
-      <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-        {output?.text || 'Empty transcript.'}
-      </p>
+      {output?.segment_count > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {output.segment_count} sentence{output.segment_count === 1 ? '' : 's'}
+        </p>
+      )}
+      <div className="max-h-64 overflow-y-auto pr-1">
+        <Streamdown
+          className="text-xs leading-relaxed text-muted-foreground"
+          components={{
+            ul: ({ children }) => <ul className="space-y-1">{children}</ul>,
+            li: ({ children }) => (
+              <li className="[&>strong]:mr-1 [&>strong]:font-medium [&>strong]:tabular-nums [&>strong]:text-foreground">
+                {children}
+              </li>
+            ),
+          }}
+        >
+          {transcript}
+        </Streamdown>
+      </div>
       {output?.note && <p className="text-xs italic text-muted-foreground">{output.note}</p>}
     </div>
   )

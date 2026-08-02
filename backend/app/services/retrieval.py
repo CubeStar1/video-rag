@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterable, TypeVar
 from videodb.shot import Shot
 
 from app.clients import get_connection, get_video
-from app.schemas import ShotOut
+from app.schemas import ShotOut, TranscriptSegment
 from app.services.ingest import player_url
 
 logger = logging.getLogger(__name__)
@@ -226,11 +226,41 @@ def compile_clip(video_id: str, timestamps: list[tuple[float, float]]) -> str:
     return get_video(video_id).generate_stream(timeline=ranges)
 
 
-def get_transcript(video_id: str, start: float | None = None, end: float | None = None) -> str:
+SEGMENTERS = ("sentence", "word", "time")
+
+
+def get_transcript(
+    video_id: str,
+    start: float | None = None,
+    end: float | None = None,
+    segmenter: str = "sentence",
+    length: int = 1,
+) -> tuple[list[TranscriptSegment], str]:
+    """Timestamped transcript segments plus the flat text they add up to.
+
+    Sentences are the default segmenter — word-level segments are too fine to cite
+    against, and the flat text loses the timestamps entirely.
+    """
+    if segmenter not in SEGMENTERS:
+        raise ValueError(f"segmenter must be one of {', '.join(SEGMENTERS)}")
+
     video = get_video(video_id)
-    kwargs: dict[str, Any] = {}
+    kwargs: dict[str, Any] = {"segmenter": segmenter, "length": length}
     if start is not None:
         kwargs["start"] = int(start)
     if end is not None:
         kwargs["end"] = int(end)
-    return video.get_transcript_text(**kwargs) or ""
+
+    rows = video.get_transcript(**kwargs) or []
+    segments = [
+        TranscriptSegment(
+            start=float(row.get("start") or 0),
+            end=float(row.get("end") or 0),
+            text=text,
+        )
+        for row in rows
+        if (text := (row.get("text") or "").strip()) and text != "-"
+    ]
+    # The same response carries the flat text; fall back to stitching the segments.
+    text = (getattr(video, "transcript_text", "") or "").strip()
+    return segments, text or " ".join(segment.text for segment in segments)

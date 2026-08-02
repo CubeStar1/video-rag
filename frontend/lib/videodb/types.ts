@@ -81,11 +81,19 @@ export interface IngestResponse {
   status: string
 }
 
+export interface TranscriptSegment {
+  start: number
+  end: number
+  text: string
+}
+
 export interface TranscriptResponse {
   videodb_video_id: string
   start?: number | null
   end?: number | null
+  segmenter: string
   text: string
+  segments: TranscriptSegment[]
 }
 
 /** Clip payload handed to the artifact panel by the `show_clips` tool. */

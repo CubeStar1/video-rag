@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowUp, Folder, Loader2, Plus, Sparkles, Upload } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useSidebar } from '@/components/ui/sidebar'
 import { ModeToggle } from '@/components/global/theme-switcher'
 import { VideoPlayer } from '@/app/agent/components/video-player'
+import { VideoPicker, VideoChips } from '@/app/agent/components/video-picker'
 import { useProjectVideos, useVideoMutations } from '@/hooks/use-project-videos'
 import { formatDuration } from '@/lib/videodb/format'
 import type { Project } from '@/app/agent/types'
@@ -30,9 +31,18 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
   const [uploadOpen, setUploadOpen] = useState(false)
   const [preview, setPreview] = useState<ProjectVideo | null>(null)
   const [isStarting, setIsStarting] = useState(false)
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([])
 
   const { videos, readyVideos, isLoading } = useProjectVideos(project.id, initialVideos)
   const { remove, reindex, invalidate } = useVideoMutations(project.id)
+
+  const toggleVideo = useCallback((videoId: string) => {
+    setSelectedVideoIds((current) =>
+      current.includes(videoId)
+        ? current.filter((item) => item !== videoId)
+        : [...current, videoId]
+    )
+  }, [])
 
   /**
    * Start a chat: create the conversation up front so the workspace and the chat
@@ -59,9 +69,13 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
 
       const { conversationId } = await response.json()
       const params = new URLSearchParams({ q: message })
-      // Pre-tag every ready video so the first question has something to search.
-      if (readyVideos.length > 0) {
-        params.set('videos', readyVideos.map((video) => video.videodb_video_id).join(','))
+      // Whatever the user tagged, or every ready video if they tagged nothing.
+      const scope =
+        selectedVideoIds.length > 0
+          ? selectedVideoIds
+          : readyVideos.map((video) => video.videodb_video_id as string)
+      if (scope.length > 0) {
+        params.set('videos', scope.join(','))
       }
       router.push(`/projects/${project.id}/conversations/${conversationId}?${params}`)
     } catch (error: any) {
@@ -101,6 +115,13 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
         {/* Prompt launcher */}
         <div className="mx-auto mt-8 max-w-2xl">
           <div className="rounded-2xl border bg-muted/30 p-3 shadow-sm transition-colors focus-within:border-primary/40 focus-within:bg-background">
+            <div className="-mx-3 -mt-3 mb-1">
+              <VideoChips
+                videos={videos}
+                selectedIds={selectedVideoIds}
+                onRemove={toggleVideo}
+              />
+            </div>
             <Textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
@@ -114,19 +135,27 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
               className="min-h-13 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
             <div className="flex items-center justify-between gap-2 px-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={() => setUploadOpen(true)}
-              >
-                <Plus className="size-3.5" />
-                Add video
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => setUploadOpen(true)}
+                >
+                  <Plus className="size-3.5" />
+                  Add video
+                </Button>
+                <VideoPicker
+                  videos={videos}
+                  selectedIds={selectedVideoIds}
+                  onToggle={toggleVideo}
+                  onClear={() => setSelectedVideoIds([])}
+                />
+              </div>
               <div className="flex items-center gap-2">
-                {readyVideos.length > 0 && (
+                {selectedVideoIds.length === 0 && readyVideos.length > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    {readyVideos.length} video{readyVideos.length === 1 ? '' : 's'} ready
+                    searching all {readyVideos.length}
                   </span>
                 )}
                 <Button

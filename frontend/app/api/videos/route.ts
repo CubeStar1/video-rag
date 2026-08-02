@@ -22,7 +22,48 @@ export async function GET(request: Request) {
 
   if (error) return new Response(error.message, { status: 500 })
 
-  return Response.json({ videos: data ?? [] })
+  return Response.json({ videos: await backfillThumbnails(supabase, data ?? []) })
+}
+
+/**
+ * A video uploaded from a URL often has no thumbnail until VideoDB finishes
+ * processing it. Fill in anything still missing, once, on read.
+ */
+async function backfillThumbnails(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  videos: any[]
+) {
+  const missing = videos.filter(
+    (video) => video.videodb_video_id && !video.thumbnail_url && video.status !== 'failed'
+  )
+  if (missing.length === 0) return videos
+
+  const byId = new Map<string, Record<string, unknown>>()
+
+  await Promise.all(
+    missing.map(async (video) => {
+      try {
+        const detail = await videodb.detail(video.videodb_video_id)
+        if (!detail.thumbnail_url) return
+
+        const patch = {
+          thumbnail_url: detail.thumbnail_url,
+          duration: video.duration ?? detail.duration ?? null,
+          stream_url: video.stream_url ?? detail.stream_url ?? null,
+          player_url: video.player_url ?? detail.player_url ?? null,
+        }
+        await supabase.from('videos').update(patch).eq('id', video.id)
+        byId.set(video.id, patch)
+      } catch {
+        // Backend down or still processing — try again on the next poll.
+      }
+    })
+  )
+
+  return videos.map((video) => {
+    const patch = byId.get(video.id)
+    return patch ? { ...video, ...patch } : video
+  })
 }
 
 /**

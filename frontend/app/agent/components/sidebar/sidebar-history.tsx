@@ -264,9 +264,9 @@ export function AgentSidebarHistory({ user }: { user: User | undefined }) {
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      router.push(`/projects/${item.project.id}/conversations`);
+                      router.push(`/projects/${item.project.id}`);
                     }}
-                    title="New conversation"
+                    title="New chat"
                   >
                     <PlusIcon className="size-4" />
                   </SidebarMenuAction>

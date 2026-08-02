@@ -65,11 +65,19 @@ class VideoDetailResponse(BaseModel):
     indexes: list[IndexEntry] = []
 
 
+class TranscriptSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
 class TranscriptResponse(BaseModel):
     videodb_video_id: str
     start: Optional[float] = None
     end: Optional[float] = None
+    segmenter: str = "sentence"
     text: str
+    segments: list[TranscriptSegment] = []
 
 
 class SearchRequest(BaseModel):

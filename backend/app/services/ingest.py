@@ -58,13 +58,29 @@ def player_url(stream_url: str | None) -> str | None:
     return f"{PLAYER_BASE}{stream_url}" if stream_url else None
 
 
+def resolve_thumbnail(video: Video) -> str | None:
+    """A freshly uploaded video often has no thumbnail yet — ask for one."""
+    existing = getattr(video, "thumbnail_url", None)
+    if existing:
+        return existing
+
+    try:
+        thumbnail = video.generate_thumbnail()
+    except Exception:  # noqa: BLE001 - the video may not be processed yet
+        logger.debug("generate_thumbnail failed for %s", video.id, exc_info=True)
+        return None
+
+    # Without a `time` argument the SDK returns the URL; with one it returns an Image.
+    return thumbnail if isinstance(thumbnail, str) else getattr(thumbnail, "url", None)
+
+
 def video_payload(video: Video) -> dict[str, Any]:
     stream_url = getattr(video, "stream_url", None)
     return {
         "videodb_video_id": video.id,
         "videodb_collection_id": video.collection_id,
         "duration": getattr(video, "length", None) or None,
-        "thumbnail_url": getattr(video, "thumbnail_url", None),
+        "thumbnail_url": resolve_thumbnail(video),
         "stream_url": stream_url,
         "player_url": player_url(stream_url),
     }
@@ -198,8 +214,17 @@ def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None)
         if not any(entry.get("status") not in (None, "failed") for entry in built):
             raise RuntimeError("No index finished building")
 
+        # Thumbnail, duration and stream URL are often unavailable at upload time
+        # (notably for YouTube sources). Re-read them now that processing is done.
+        try:
+            refreshed = video_payload(get_video(videodb_video_id))
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not refresh video metadata", exc_info=True)
+            refreshed = {}
+
         _write_status(
             db_video_id,
+            **{key: value for key, value in refreshed.items() if value},
             status="ready",
             error=None,
             index_status={

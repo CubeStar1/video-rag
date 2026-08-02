@@ -78,7 +78,7 @@ def detail(videodb_video_id: str) -> VideoDetailResponse:
         videodb_video_id=video.id,
         title=getattr(video, "name", None),
         duration=getattr(video, "length", None),
-        thumbnail_url=getattr(video, "thumbnail_url", None),
+        thumbnail_url=ingest_service.resolve_thumbnail(video),
         stream_url=stream_url,
         player_url=ingest_service.player_url(stream_url),
         indexes=[IndexEntry(**entry) for entry in ingest_service.describe_indexes(video)],
@@ -155,14 +155,23 @@ def transcript(
     videodb_video_id: str,
     start: float | None = Query(default=None),
     end: float | None = Query(default=None),
+    segmenter: str = Query(default="sentence", pattern="^(sentence|word|time)$"),
+    length: int = Query(default=1, ge=1, description="Segment length in seconds, `time` only"),
 ) -> TranscriptResponse:
     try:
-        text = retrieval_service.get_transcript(videodb_video_id, start, end)
+        segments, text = retrieval_service.get_transcript(
+            videodb_video_id, start, end, segmenter=segmenter, length=length
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=409,
             detail=f"No transcript available yet — the video may still be indexing ({exc})",
         ) from exc
     return TranscriptResponse(
-        videodb_video_id=videodb_video_id, start=start, end=end, text=text
+        videodb_video_id=videodb_video_id,
+        start=start,
+        end=end,
+        segmenter=segmenter,
+        text=text,
+        segments=segments,
     )

@@ -82,10 +82,15 @@ export const videodb = {
   remove: (videodbVideoId: string) =>
     request<{ deleted: boolean }>(`/api/videos/${videodbVideoId}`, { method: 'DELETE' }),
 
-  transcript: (videodbVideoId: string, start?: number, end?: number) => {
+  transcript: (
+    videodbVideoId: string,
+    options: { start?: number; end?: number; segmenter?: 'sentence' | 'word' | 'time' } = {}
+  ) => {
+    const { start, end, segmenter } = options
     const params = new URLSearchParams()
     if (start !== undefined) params.set('start', String(start))
     if (end !== undefined) params.set('end', String(end))
+    if (segmenter !== undefined) params.set('segmenter', segmenter)
     const query = params.toString()
     return request<TranscriptResponse>(
       `/api/videos/${videodbVideoId}/transcript${query ? `?${query}` : ''}`
