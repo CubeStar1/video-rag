@@ -117,6 +117,8 @@ export const videodb = {
     filter?: unknown
     limit?: number
     sort?: [string, string][]
+    /** Index rows to hydrate onto each shot, e.g. `['scene']` or `'all'`. */
+    return_fields?: unknown
   }) => post<Shot[]>('/api/retrieval/query', body),
 
   aggregate: (body: {

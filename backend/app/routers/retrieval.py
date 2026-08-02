@@ -91,6 +91,7 @@ def query(request: QueryRequest) -> list[ShotOut]:
             request.filter,
             request.limit,
             request.sort,
+            request.return_fields,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc

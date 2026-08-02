@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import {
   Check,
   Copy,
+  Crosshair,
   ExternalLink,
   Film,
   ListVideo,
@@ -12,6 +13,7 @@ import {
 import { cn } from '@/lib/utils'
 import { formatRange, formatTimestamp, toPlayerUrl } from '@/lib/videodb/format'
 import { VideoPlayer, type VideoPlayerHandle } from '@/app/agent/components/video-player'
+import { useAgentStore } from '@/app/agent/store/agent-store'
 import type { ClipItem } from '@/lib/videodb/types'
 
 interface ClipReelPanelProps {
@@ -32,6 +34,7 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
     compiledStreamUrl ? PLAY_ALL : '0'
   )
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const seekStudio = useAgentStore((state) => state.seekStudio)
 
   const active = useMemo(() => {
     if (activeId === PLAY_ALL && compiledStreamUrl) {
@@ -170,6 +173,14 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
                 </button>
 
                 <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => seekStudio(clip.start, clip.video_id)}
+                    title="Show in the timeline"
+                    className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Crosshair className="size-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => void copyUrl(id, clip.stream_url)}

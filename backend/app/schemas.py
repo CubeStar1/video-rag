@@ -122,6 +122,7 @@ class QueryRequest(BaseModel):
     filter: Optional[Any] = None
     limit: int = 50
     sort: Optional[list[tuple[str, str]]] = None
+    return_fields: Optional[Any] = None
 
 
 class AggregateRequest(BaseModel):

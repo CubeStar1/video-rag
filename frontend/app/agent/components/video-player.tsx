@@ -10,6 +10,8 @@ export interface VideoPlayerHandle {
   seekTo: (seconds: number) => void
   play: () => void
   pause: () => void
+  getCurrentTime: () => number
+  isPaused: () => boolean
 }
 
 interface VideoPlayerProps {
@@ -17,6 +19,10 @@ interface VideoPlayerProps {
   poster?: string | null
   autoPlay?: boolean
   className?: string
+  /** Fires on `timeupdate` and, while playing, once per animation frame. */
+  onTimeUpdate?: (seconds: number) => void
+  onDurationChange?: (seconds: number) => void
+  onPlayingChange?: (isPlaying: boolean) => void
 }
 
 /**
@@ -24,7 +30,18 @@ interface VideoPlayerProps {
  * back to native playback (Safari/iOS), then to the VideoDB console player.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  function VideoPlayer({ streamUrl, poster, autoPlay = false, className }, ref) {
+  function VideoPlayer(
+    {
+      streamUrl,
+      poster,
+      autoPlay = false,
+      className,
+      onTimeUpdate,
+      onDurationChange,
+      onPlayingChange,
+    },
+    ref
+  ) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [failed, setFailed] = useState(false)
 
@@ -37,7 +54,59 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
       play: () => void videoRef.current?.play().catch(() => {}),
       pause: () => videoRef.current?.pause(),
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+      isPaused: () => videoRef.current?.paused ?? true,
     }))
+
+    // `timeupdate` only fires ~4x/sec, which reads as a stuttering playhead — drive
+    // the reported time off animation frames while the video is actually playing.
+    useEffect(() => {
+      const video = videoRef.current
+      if (!video) return
+
+      let frame = 0
+
+      const tick = () => {
+        onTimeUpdate?.(video.currentTime)
+        frame = requestAnimationFrame(tick)
+      }
+
+      const emitTime = () => onTimeUpdate?.(video.currentTime)
+      const emitDuration = () => {
+        if (Number.isFinite(video.duration)) onDurationChange?.(video.duration)
+      }
+      const handlePlay = () => {
+        onPlayingChange?.(true)
+        cancelAnimationFrame(frame)
+        frame = requestAnimationFrame(tick)
+      }
+      const handleStop = () => {
+        onPlayingChange?.(false)
+        cancelAnimationFrame(frame)
+        emitTime()
+      }
+
+      video.addEventListener('timeupdate', emitTime)
+      video.addEventListener('seeked', emitTime)
+      video.addEventListener('loadedmetadata', emitDuration)
+      video.addEventListener('durationchange', emitDuration)
+      video.addEventListener('play', handlePlay)
+      video.addEventListener('playing', handlePlay)
+      video.addEventListener('pause', handleStop)
+      video.addEventListener('ended', handleStop)
+
+      return () => {
+        cancelAnimationFrame(frame)
+        video.removeEventListener('timeupdate', emitTime)
+        video.removeEventListener('seeked', emitTime)
+        video.removeEventListener('loadedmetadata', emitDuration)
+        video.removeEventListener('durationchange', emitDuration)
+        video.removeEventListener('play', handlePlay)
+        video.removeEventListener('playing', handlePlay)
+        video.removeEventListener('pause', handleStop)
+        video.removeEventListener('ended', handleStop)
+      }
+    }, [onTimeUpdate, onDurationChange, onPlayingChange, streamUrl])
 
     useEffect(() => {
       const video = videoRef.current

@@ -58,6 +58,14 @@ export interface ArtifactState {
 }
 
 
+export interface StudioState {
+  isOpen: boolean
+  /** Supabase `videos.id` of the video loaded in the persistent player. */
+  activeVideoId?: string
+  seekRequest?: { seconds: number; videodbVideoId?: string; nonce: number }
+}
+
+
 export interface ProjectHistoryItem {
   project: Project
   conversations: Conversation[]

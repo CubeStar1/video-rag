@@ -29,6 +29,8 @@ import { VideoPicker, VideoChips } from "@/app/agent/components/video-picker";
 import { useProjectVideos } from "@/hooks/use-project-videos";
 import { useSidebar } from "@/components/ui/sidebar";
 import { ModeToggle } from "@/components/global/theme-switcher";
+import { useAgentStore } from "@/app/agent/store/agent-store";
+import { cn } from "@/lib/utils";
 
 interface AgentChatProps {
   id: string;
@@ -45,6 +47,8 @@ export function AgentChat({
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
   const { selectedModel, handleModelChange } = useModelSelection();
   const { toggleSidebar } = useSidebar();
+  const studioOpen = useAgentStore((state) => state.studioState.isOpen);
+  const toggleStudio = useAgentStore((state) => state.toggleStudio);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -131,6 +135,18 @@ export function AgentChat({
         </button>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={toggleStudio}
+            title={studioOpen ? "Hide the video panel" : "Show the video panel"}
+            className={cn(
+              "rounded-md p-2 transition-colors hover:bg-muted active:scale-95",
+              studioOpen
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <FilmIcon className="size-4" />
+          </button>
           <ModeToggle />
         </div>
       </div>

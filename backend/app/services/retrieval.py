@@ -188,9 +188,20 @@ def query_index(
     filter: Any = None,
     limit: int = 50,
     sort: list[tuple[str, str]] | None = None,
+    return_fields: Any = None,
 ) -> list[ShotOut]:
     video = get_video(video_id)
-    result = video.query(index_name=index_name, filter=filter, limit=limit, sort=sort)
+    kwargs: dict[str, Any] = {
+        "index_name": index_name,
+        "filter": filter,
+        "limit": limit,
+        "sort": sort,
+    }
+    # Nested objects and lists (setting, visible_objects) live outside the searchable
+    # groups — `return_fields` is the only way to read them back off a shot.
+    if return_fields is not None:
+        kwargs["return_fields"] = return_fields
+    result = video.query(**kwargs)
     return [_shot_out(shot, with_stream=False) for shot in result.get_shots()]
 
 

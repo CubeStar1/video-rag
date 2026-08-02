@@ -109,6 +109,32 @@ export interface ClipItem {
   thumbnail_url?: string
 }
 
+/** One indexed scene, flattened out of the `scene` index rows. */
+export interface SceneSegment {
+  id: string
+  start: number
+  end: number
+  description: string
+  on_screen_text?: string | null
+  activity?: string | null
+  setting?: { location_type?: string | null; environment?: string | null } | null
+  visible_objects?: string[]
+}
+
+/** Everything the studio timeline needs for one video. */
+export interface VideoTimeline {
+  video_id: string
+  videodb_video_id: string
+  title: string
+  duration: number | null
+  stream_url: string | null
+  thumbnail_url: string | null
+  scenes: SceneSegment[]
+  transcript: TranscriptSegment[]
+  /** Per-index failures — the panel still renders whatever did load. */
+  errors: string[]
+}
+
 export interface ShowClipsArgs {
   title: string
   identifier?: string

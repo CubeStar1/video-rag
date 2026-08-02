@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/resizable";
 import { AgentChat } from "./agent-chat";
 import { ArtifactPanel } from "./artifact-panel";
-import { useEffect, useState } from "react";
+import { VideoStudioPanel } from "./video-studio/video-studio-panel";
+import { Fragment, useEffect, useState } from "react";
 import { useAgentStore } from "../store/agent-store";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 
@@ -20,6 +21,7 @@ interface AgentViewProps {
 
 export function AgentView({ id, projectId, initialMessages = [] }: AgentViewProps) {
   const artifactStateOpen = useAgentStore((state) => state.artifactState.isOpen);
+  const studioOpen = useAgentStore((state) => state.studioState.isOpen);
   const [resolvedProjectId, setResolvedProjectId] = useState(projectId);
 
   useEffect(() => {
@@ -62,11 +64,15 @@ export function AgentView({ id, projectId, initialMessages = [] }: AgentViewProp
     };
   }, [id]);
 
+  // Panels are added and removed at runtime, so each one carries a stable id and
+  // order. `defaultSize` only applies the first time a panel mounts.
+  const chatSize = studioOpen ? (artifactStateOpen ? 24 : 34) : artifactStateOpen ? 25 : 100;
+
   return (
     <div className="h-dvh flex flex-col">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Chat Panel — always visible, takes full width when artifact is closed */}
-        <ResizablePanel defaultSize={artifactStateOpen ? 25 : 100} minSize={20}>
+        {/* Chat — always visible */}
+        <ResizablePanel id="chat" order={1} defaultSize={chatSize} minSize={18}>
           <AgentChat
             id={id}
             projectId={resolvedProjectId}
@@ -74,14 +80,34 @@ export function AgentView({ id, projectId, initialMessages = [] }: AgentViewProp
           />
         </ResizablePanel>
 
+        {/* Video studio — the persistent player and timeline for the workspace */}
+        {studioOpen && (
+          <Fragment key="studio">
+            <ResizableHandle withHandle />
+            <ResizablePanel
+              id="studio"
+              order={2}
+              defaultSize={artifactStateOpen ? 40 : 66}
+              minSize={25}
+            >
+              <VideoStudioPanel projectId={resolvedProjectId} />
+            </ResizablePanel>
+          </Fragment>
+        )}
+
         {/* Artifact Panel — slides in from the right when open */}
         {artifactStateOpen && (
-          <>
+          <Fragment key="artifact">
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={75} minSize={45}>
+            <ResizablePanel
+              id="artifact"
+              order={3}
+              defaultSize={studioOpen ? 36 : 75}
+              minSize={22}
+            >
               <ArtifactPanel />
             </ResizablePanel>
-          </>
+          </Fragment>
         )}
       </ResizablePanelGroup>
     </div>
