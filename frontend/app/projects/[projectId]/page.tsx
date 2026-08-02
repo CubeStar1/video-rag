@@ -1,17 +1,18 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { getUser } from '@/app/agent/hooks/get-user'
+import { WorkspaceClient } from './components/workspace-client'
 
 type Params = Promise<{ projectId: string }>
 
-async function ProjectRedirectPage({ params }: { params: Params }) {
+async function ProjectWorkspacePage({ params }: { params: Params }) {
   const { projectId } = await params
   const user = await getUser()
   const supabase = await createSupabaseServer()
 
   const { data: project } = await supabase
     .from('projects')
-    .select('id,user_id')
+    .select('*')
     .eq('id', projectId)
     .single()
 
@@ -19,21 +20,15 @@ async function ProjectRedirectPage({ params }: { params: Params }) {
     notFound()
   }
 
-  const { data: conversation } = await supabase
-    .from('conversations')
-    .select('id')
+  const { data: videos } = await supabase
+    .from('videos')
+    .select('*')
     .eq('project_id', projectId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
+    .order('created_at', { ascending: false })
 
-  if (!conversation) {
-    return redirect('/projects?create=1')
-  }
-
-  return redirect(`/projects/${projectId}/conversations/${conversation.id}`)
+  return <WorkspaceClient project={project} initialVideos={videos ?? []} />
 }
 
 export default function Page(props: { params: Params }) {
-  return <ProjectRedirectPage params={props.params} />
+  return <ProjectWorkspacePage params={props.params} />
 }

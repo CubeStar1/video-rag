@@ -96,6 +96,50 @@ WITH CHECK (
   )
 );
 
+CREATE TABLE IF NOT EXISTS public.videos (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  source_type text NOT NULL DEFAULT 'upload',
+  storage_path text NULL,
+  source_url text NOT NULL,
+  videodb_video_id text NULL,
+  videodb_collection_id text NULL,
+  stream_url text NULL,
+  player_url text NULL,
+  thumbnail_url text NULL,
+  duration numeric NULL,
+  status text NOT NULL DEFAULT 'pending',
+  index_status jsonb NULL,
+  error text NULL,
+  created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT videos_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_videos_project_id
+  ON public.videos(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_videodb_video_id
+  ON public.videos(videodb_video_id)
+  WHERE videodb_video_id IS NOT NULL;
+
+DROP TRIGGER IF EXISTS update_videos_updated_at ON public.videos;
+CREATE TRIGGER update_videos_updated_at
+BEFORE UPDATE ON public.videos
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage own videos" ON public.videos;
+CREATE POLICY "Users can manage own videos"
+ON public.videos
+FOR ALL
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('project-assets', 'project-assets', true)
 ON CONFLICT (id) DO NOTHING;

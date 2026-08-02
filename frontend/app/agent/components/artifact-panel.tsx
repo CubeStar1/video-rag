@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Maximize2, Minimize2, Copy, Check, FileCode, FileText, Layout } from 'lucide-react'
+import { X, Maximize2, Minimize2, Copy, Check, FileCode, FileText, Film, Layout } from 'lucide-react'
 import { useState } from 'react'
 import { useAgentStore } from '../store/agent-store'
 import { MessageResponse } from '@/components/ai-elements/message'
@@ -22,7 +22,12 @@ export function ArtifactPanel() {
     }
   }
 
+  const kind = (artifact.metadata as { kind?: string } | undefined)?.kind
+  const isCustom = artifact.displayType === 'custom'
+
   const getIcon = () => {
+    if (kind === 'clips') return <Film className="size-4" />
+
     switch (artifact.displayType) {
       case 'code':
         return <FileCode className="size-4" />
@@ -32,6 +37,11 @@ export function ArtifactPanel() {
         return <Layout className="size-4" />
     }
   }
+
+  const subtitle =
+    kind === 'clips'
+      ? `${(artifact.metadata as { count?: number } | undefined)?.count ?? 0} clips`
+      : artifact.displayType
 
   return (
     <AnimatePresence mode="wait">
@@ -85,23 +95,26 @@ export function ArtifactPanel() {
                   transition={{ delay: 0.2 }}
                   className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider"
                 >
-                  {artifact.displayType}
+                  {subtitle}
                 </motion.span>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={handleCopy}
-                disabled={!artifact.content}
-                className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-all active:scale-95 disabled:opacity-50"
-                title="Copy content"
-              >
-                {copied ? (
-                  <Check className="size-4 text-emerald-500" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </button>
+              {/* Custom panels render their own UI — there is no text body to copy. */}
+              {!isCustom && (
+                <button
+                  onClick={handleCopy}
+                  disabled={!artifact.content}
+                  className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-all active:scale-95 disabled:opacity-50"
+                  title="Copy content"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-all active:scale-95"

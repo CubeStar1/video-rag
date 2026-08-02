@@ -33,7 +33,6 @@ export function ProjectsPageClient({
       return {
         project,
         conversationCount: projectConversations.length,
-        latestConversationId: projectConversations[0]?.id,
       }
     })
   }, [projects, conversations])
@@ -59,9 +58,10 @@ export function ProjectsPageClient({
         throw new Error(await response.text())
       }
 
-      const { projectId, conversationId } = await response.json()
+      const { projectId } = await response.json()
       setOpen(false)
-      router.push(`/projects/${projectId}/conversations/${conversationId}`)
+      // Land on the workspace so the first thing they see is "upload a video".
+      router.push(`/projects/${projectId}`)
       router.refresh()
     } catch (error: any) {
       toast.error(error.message || 'Failed to create project')
@@ -91,14 +91,10 @@ export function ProjectsPageClient({
 
         {projectCards.length ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projectCards.map(({ project, conversationCount, latestConversationId }) => (
+            {projectCards.map(({ project, conversationCount }) => (
               <Link
                 key={project.id}
-                href={
-                  latestConversationId
-                    ? `/projects/${project.id}/conversations/${latestConversationId}`
-                    : `/projects/${project.id}`
-                }
+                href={`/projects/${project.id}`}
                 className="rounded-3xl border bg-card p-6 transition-colors hover:bg-accent/30"
               >
                 <div className="flex items-start justify-between gap-4">
