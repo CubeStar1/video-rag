@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@xyflow/react/dist/style.css";
+@import "@videojs/react/video/skin.css";
+
 
 @custom-variant dark (&:is(.dark *));
 

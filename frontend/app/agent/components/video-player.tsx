@@ -2,8 +2,14 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
+import { createPlayer, selectError } from '@videojs/react'
+import { Video, VideoSkin, videoFeatures } from '@videojs/react/video'
+import { HlsJsVideo } from '@videojs/react/media/hlsjs-video'
 import { cn } from '@/lib/utils'
 import { toPlayerUrl } from '@/lib/videodb/format'
+
+/** One store definition, but `Provider` builds a fresh store per mounted player. */
+const Player = createPlayer({ features: videoFeatures, displayName: 'VideoDBPlayer' })
 
 export interface VideoPlayerHandle {
   /** Jump to a position (seconds) in the currently loaded stream. */
@@ -25,9 +31,12 @@ interface VideoPlayerProps {
   onPlayingChange?: (isPlaying: boolean) => void
 }
 
+const isHls = (url: string) => /\.m3u8(\?|#|$)/i.test(url)
+
 /**
- * HLS player for VideoDB streams. Uses hls.js where MSE is available and falls
- * back to native playback (Safari/iOS), then to the VideoDB console player.
+ * Player for VideoDB streams, built on the Video.js v10 React skin. HLS runs
+ * through hls.js; anything else falls back to the plain media element. A stream
+ * the browser cannot play at all falls back to the VideoDB console player.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   function VideoPlayer(
@@ -45,6 +54,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const videoRef = useRef<HTMLVideoElement>(null)
     const [failed, setFailed] = useState(false)
 
+    useEffect(() => setFailed(false), [streamUrl])
+
     useImperativeHandle(ref, () => ({
       seekTo: (seconds: number) => {
         if (videoRef.current) {
@@ -58,6 +69,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       isPaused: () => videoRef.current?.paused ?? true,
     }))
 
+    // The skin owns the controls, but the timeline outside this component still
+    // reads playback state off the underlying media element.
+    //
     // `timeupdate` only fires ~4x/sec, which reads as a stuttering playhead — drive
     // the reported time off animation frames while the video is actually playing.
     useEffect(() => {
@@ -106,50 +120,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         video.removeEventListener('pause', handleStop)
         video.removeEventListener('ended', handleStop)
       }
-    }, [onTimeUpdate, onDurationChange, onPlayingChange, streamUrl])
-
-    useEffect(() => {
-      const video = videoRef.current
-      if (!video || !streamUrl) return
-
-      setFailed(false)
-      let hls: import('hls.js').default | null = null
-      let cancelled = false
-
-      const attach = async () => {
-        // Safari plays HLS natively and does not need (or want) hls.js.
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = streamUrl
-          if (autoPlay) void video.play().catch(() => {})
-          return
-        }
-
-        const { default: Hls } = await import('hls.js')
-        if (cancelled) return
-
-        if (!Hls.isSupported()) {
-          setFailed(true)
-          return
-        }
-
-        hls = new Hls({ enableWorker: true, lowLatencyMode: false })
-        hls.loadSource(streamUrl)
-        hls.attachMedia(video)
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (autoPlay) void video.play().catch(() => {})
-        })
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) setFailed(true)
-        })
-      }
-
-      void attach()
-
-      return () => {
-        cancelled = true
-        hls?.destroy()
-      }
-    }, [streamUrl, autoPlay])
+    }, [onTimeUpdate, onDurationChange, onPlayingChange, streamUrl, failed])
 
     if (!streamUrl) {
       return (
@@ -192,14 +163,39 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       )
     }
 
+    const Media = isHls(streamUrl) ? HlsJsVideo : Video
+
     return (
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        poster={poster ?? undefined}
-        className={cn('aspect-video w-full rounded-lg bg-black', className)}
-      />
+      <div
+        className={cn(
+          'relative aspect-video w-full overflow-hidden rounded-lg bg-black',
+          className
+        )}
+      >
+        <Player.Provider>
+          <VideoSkin
+            poster={poster ?? undefined}
+            className="size-full [--media-border-radius:0px]"
+          >
+            <Media ref={videoRef} src={streamUrl} autoPlay={autoPlay} playsInline />
+            <ErrorWatcher onFail={setFailed} />
+          </VideoSkin>
+        </Player.Provider>
+      </div>
     )
   }
 )
+
+/**
+ * The skin renders its own error dialog, but a stream this browser simply cannot
+ * decode should hand the user off to the VideoDB console player instead.
+ */
+function ErrorWatcher({ onFail }: { onFail: (failed: boolean) => void }) {
+  const error = Player.usePlayer(selectError)?.error
+
+  useEffect(() => {
+    if (error) onFail(true)
+  }, [error, onFail])
+
+  return null
+}

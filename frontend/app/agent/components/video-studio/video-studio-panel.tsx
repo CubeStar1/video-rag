@@ -223,7 +223,7 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
           key={activeVideo?.id}
           streamUrl={activeVideo?.stream_url}
           poster={activeVideo?.thumbnail_url}
-          className="mx-auto max-h-[45vh] w-full rounded-none object-contain"
+          className="mx-auto max-h-[45vh] w-full rounded-none"
           onTimeUpdate={handleTimeUpdate}
           onDurationChange={handleDurationChange}
           onPlayingChange={setIsPlaying}
