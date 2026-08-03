@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { formatDuration } from '@/lib/videodb/format'
+import { describeSegmentation } from '@/lib/videodb/segmentation'
 import type { ProjectVideo } from '@/lib/videodb/types'
 
 interface VideoCardProps {
@@ -67,6 +68,9 @@ function StatusPill({ video }: { video: ProjectVideo }) {
 export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const isReady = video.status === 'ready'
+  // Absent on rows ingested before segmentation was configurable — show nothing
+  // rather than implying a config we can't vouch for.
+  const segmentation = video.index_config?.segmentation ?? video.index_status?.segmentation
 
   return (
     <div className="group flex flex-col gap-2">
@@ -109,6 +113,11 @@ export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardPr
           <div className="mt-1">
             <StatusPill video={video} />
           </div>
+          {segmentation && (
+            <p className="mt-1 truncate text-[11px] text-muted-foreground/70">
+              {describeSegmentation(segmentation)}
+            </p>
+          )}
         </div>
 
         <DropdownMenu>

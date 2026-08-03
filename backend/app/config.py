@@ -15,8 +15,11 @@ class Settings(BaseSettings):
     vlm_model: str = "basic"
     vlm_frame_count: int = 4
     transform_resolution: str = "480p"
+    # Defaults for whichever segmentation type the caller picks at ingest time.
+    segmentation_type: str = "shot"
     shot_threshold: int = 30
     min_scene_len: int = 15
+    time_segment_seconds: int = 10
 
     # How long a background indexing job may run before it is marked failed.
     index_timeout_seconds: int = 3600

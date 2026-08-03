@@ -1,6 +1,7 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
 import { videodb, VideoDBBackendError } from '@/lib/videodb/backend-client'
+import { normalizeSegmentation } from '@/lib/videodb/segmentation'
 
 export const maxDuration = 120
 
@@ -74,10 +75,14 @@ export async function POST(request: Request) {
   const user = await getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  const { projectId, title, sourceUrl, storagePath, sourceType } = await request.json()
+  const { projectId, title, sourceUrl, storagePath, sourceType, segmentation } =
+    await request.json()
 
   if (!projectId) return new Response('projectId is required', { status: 400 })
   if (!sourceUrl) return new Response('sourceUrl is required', { status: 400 })
+
+  // Stored alongside the row so a later re-index replays the same understanding pass.
+  const segmentationConfig = normalizeSegmentation(segmentation)
 
   const supabase = await createSupabaseServer()
 
@@ -101,6 +106,7 @@ export async function POST(request: Request) {
       storage_path: storagePath ?? null,
       source_url: sourceUrl,
       status: 'pending',
+      index_config: { segmentation: segmentationConfig },
     })
     .select()
     .single()
@@ -114,6 +120,7 @@ export async function POST(request: Request) {
       db_video_id: video.id,
       source_url: sourceUrl,
       title: video.title,
+      segmentation: segmentationConfig,
     })
 
     // The backend already wrote these; re-read so the client gets fresh values.

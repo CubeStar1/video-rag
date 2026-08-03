@@ -54,6 +54,35 @@ SCENE_PROMPT = (
 )
 
 
+def resolve_segmentation(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Merge a caller's segmentation choice over the configured defaults.
+
+    Only the keys VideoDB expects for the chosen type are emitted — sending a
+    `threshold` alongside `{"type": "time"}` would be silently ignored at best.
+    Idempotent, so an already-resolved dict can be passed straight back in.
+    """
+    settings = get_settings()
+    config = config or {}
+    kind = config.get("type") or settings.segmentation_type
+
+    if kind == "time":
+        seconds = config.get("seconds")
+        return {
+            "type": "time",
+            "seconds": int(seconds) if seconds else settings.time_segment_seconds,
+        }
+
+    threshold = config.get("threshold")
+    min_scene_len = config.get("min_scene_len")
+    return {
+        "type": "shot",
+        "threshold": int(threshold) if threshold else settings.shot_threshold,
+        "min_scene_len": (
+            int(min_scene_len) if min_scene_len is not None else settings.min_scene_len
+        ),
+    }
+
+
 def player_url(stream_url: str | None) -> str | None:
     return f"{PLAYER_BASE}{stream_url}" if stream_url else None
 
@@ -107,9 +136,14 @@ def _write_status(db_video_id: str | None, **payload: Any) -> None:
         update_video_row(db_video_id, payload)
 
 
-def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None) -> None:
+def run_indexing_pipeline(
+    videodb_video_id: str,
+    db_video_id: str | None = None,
+    segmentation: dict[str, Any] | None = None,
+) -> None:
     """Understand -> index. Safe to call as a fire-and-forget background task."""
     settings = get_settings()
+    segmentation = resolve_segmentation(segmentation)
 
     try:
         video = get_video(videodb_video_id)
@@ -122,16 +156,16 @@ def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None)
         _write_status(
             db_video_id,
             status="indexing",
-            index_status={"step": "understanding", "message": "Analyzing video…"},
+            index_status={
+                "step": "understanding",
+                "message": "Analyzing video…",
+                "segmentation": segmentation,
+            },
         )
 
         understanding = video.understand(
             transform={"resolution": settings.transform_resolution},
-            segmentation={
-                "type": "shot",
-                "threshold": settings.shot_threshold,
-                "min_scene_len": settings.min_scene_len,
-            },
+            segmentation=segmentation,
             analyzers=[
                 {"type": "spoken_words", "name": "transcript"},
                 {
@@ -160,6 +194,7 @@ def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None)
                 index_status={
                     "step": "understanding",
                     "message": "Analyzing video…",
+                    "segmentation": segmentation,
                     "analyzers": _analyzer_entries(understanding),
                 },
             )
@@ -179,6 +214,7 @@ def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None)
             index_status={
                 "step": "indexing",
                 "message": "Building search indexes…",
+                "segmentation": segmentation,
                 "analyzers": _analyzer_entries(understanding),
             },
         )
@@ -230,6 +266,7 @@ def run_indexing_pipeline(videodb_video_id: str, db_video_id: str | None = None)
             index_status={
                 "step": "ready",
                 "message": "Ready to search",
+                "segmentation": segmentation,
                 "analyzers": _analyzer_entries(understanding),
                 "indexes": built,
             },

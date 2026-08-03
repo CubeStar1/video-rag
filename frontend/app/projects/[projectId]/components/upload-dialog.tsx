@@ -1,7 +1,17 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { CheckCircle2, FileUp, Link2, Loader2, Plus, X, XCircle } from 'lucide-react'
+import {
+  CheckCircle2,
+  FileUp,
+  Link2,
+  Loader2,
+  Plus,
+  Scissors,
+  Timer,
+  X,
+  XCircle,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,9 +22,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { uploadProjectVideo } from '@/lib/supabase/upload-project-video'
+import {
+  normalizeSegmentation,
+  SEGMENTATION_DEFAULTS,
+  SEGMENTATION_LIMITS,
+  SEGMENTATION_OPTIONS,
+} from '@/lib/videodb/segmentation'
+import type { SegmentationConfig } from '@/lib/videodb/types'
 
 type JobState = 'uploading' | 'registering' | 'done' | 'error'
 
@@ -46,6 +64,9 @@ export function UploadDialog({
   const [isWorking, setIsWorking] = useState(false)
   const [tab, setTab] = useState('upload')
   const [isDragging, setIsDragging] = useState(false)
+  // Every key is kept even when its type is inactive, so toggling between shot and
+  // time doesn't lose the numbers the user already dialled in.
+  const [segmentation, setSegmentation] = useState({ ...SEGMENTATION_DEFAULTS })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const reset = () => {
@@ -53,6 +74,7 @@ export function UploadDialog({
     setUrls([''])
     setJobs([])
     setTab('upload')
+    setSegmentation({ ...SEGMENTATION_DEFAULTS })
   }
 
   const updateJob = (id: string, patch: Partial<Job>) => {
@@ -64,6 +86,7 @@ export function UploadDialog({
     sourceUrl: string
     storagePath?: string
     sourceType: 'upload' | 'url'
+    segmentation: SegmentationConfig
   }) => {
     const response = await fetch('/api/videos', {
       method: 'POST',
@@ -114,6 +137,9 @@ export function UploadDialog({
     ]
     setJobs(initialJobs)
 
+    // Drops the keys that don't apply to the chosen type and clamps the rest.
+    const segmentationConfig = normalizeSegmentation(segmentation)
+
     let succeeded = 0
 
     for (const file of files) {
@@ -126,6 +152,7 @@ export function UploadDialog({
           sourceUrl: uploaded.publicUrl,
           storagePath: uploaded.storagePath,
           sourceType: 'upload',
+          segmentation: segmentationConfig,
         })
         updateJob(id, { state: 'done', message: 'Indexing started' })
         succeeded += 1
@@ -141,6 +168,7 @@ export function UploadDialog({
           title: deriveTitle(url),
           sourceUrl: url,
           sourceType: 'url',
+          segmentation: segmentationConfig,
         })
         updateJob(id, { state: 'done', message: 'Indexing started' })
         succeeded += 1
@@ -183,7 +211,10 @@ export function UploadDialog({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="upload" className="space-y-5 pt-4">
+          <TabsContent
+            value="upload"
+            className="max-h-[65vh] space-y-5 overflow-y-auto pt-4 pr-1"
+          >
             <div
               onDragOver={(event) => {
                 event.preventDefault()
@@ -282,6 +313,91 @@ export function UploadDialog({
               </Button>
             </div>
 
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">How should we split these videos?</p>
+                <p className="text-xs text-muted-foreground">
+                  Scenes are the time ranges the visual analyzer describes and indexes.
+                  Match this to the footage you&apos;re adding.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {SEGMENTATION_OPTIONS.map((option) => {
+                  const Icon = option.type === 'time' ? Timer : Scissors
+                  const isActive = segmentation.type === option.type
+                  return (
+                    <button
+                      key={option.type}
+                      type="button"
+                      onClick={() =>
+                        setSegmentation((current) => ({ ...current, type: option.type }))
+                      }
+                      className={cn(
+                        'rounded-lg border p-3 text-left transition-colors',
+                        isActive
+                          ? 'border-primary bg-primary/5'
+                          : 'hover:border-muted-foreground/40'
+                      )}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Icon
+                          className={cn(
+                            'size-4',
+                            isActive ? 'text-primary' : 'text-muted-foreground'
+                          )}
+                        />
+                        {option.label}
+                      </span>
+                      <span className="mt-1.5 block text-xs text-muted-foreground">
+                        {option.hint}
+                      </span>
+                      <span className="mt-1 block text-[11px] leading-snug text-muted-foreground/70">
+                        {option.bestFor}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="space-y-4 rounded-lg border bg-muted/20 px-3 py-3">
+                {segmentation.type === 'time' ? (
+                  <SettingSlider
+                    label="Scene length"
+                    hint="Shorter scenes give finer search results but cost more to analyze."
+                    value={segmentation.seconds}
+                    format={(value) => `${value}s`}
+                    {...SEGMENTATION_LIMITS.seconds}
+                    onChange={(seconds) =>
+                      setSegmentation((current) => ({ ...current, seconds }))
+                    }
+                  />
+                ) : (
+                  <>
+                    <SettingSlider
+                      label="Cut sensitivity"
+                      hint="Higher values detect fewer cuts, so scenes come out longer."
+                      value={segmentation.threshold}
+                      {...SEGMENTATION_LIMITS.threshold}
+                      onChange={(threshold) =>
+                        setSegmentation((current) => ({ ...current, threshold }))
+                      }
+                    />
+                    <SettingSlider
+                      label="Minimum scene length"
+                      hint="Keeps quick cuts from each becoming their own scene."
+                      value={segmentation.min_scene_len}
+                      format={(value) => `${value}s`}
+                      {...SEGMENTATION_LIMITS.min_scene_len}
+                      onChange={(min_scene_len) =>
+                        setSegmentation((current) => ({ ...current, min_scene_len }))
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <p className="text-sm font-medium">Add files to</p>
               <Input value={projectName} readOnly className="bg-muted/40" />
@@ -348,6 +464,43 @@ export function UploadDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function SettingSlider({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  onChange,
+  format = String,
+}: {
+  label: string
+  hint: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+  format?: (value: number) => string
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-xs font-medium tabular-nums text-muted-foreground">
+          {format(value)}
+        </span>
+      </div>
+      <Slider
+        value={[value]}
+        min={min}
+        max={max}
+        step={1}
+        onValueChange={([next]) => onChange(next)}
+      />
+      <p className="text-[11px] leading-snug text-muted-foreground/70">{hint}</p>
+    </div>
   )
 }
 

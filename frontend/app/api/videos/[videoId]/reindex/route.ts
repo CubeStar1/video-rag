@@ -1,6 +1,7 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
 import { videodb } from '@/lib/videodb/backend-client'
+import { normalizeSegmentation } from '@/lib/videodb/segmentation'
 
 type Params = Promise<{ videoId: string }>
 
@@ -19,6 +20,10 @@ export async function POST(_request: Request, { params }: { params: Params }) {
 
   if (!video) return new Response('Video not found', { status: 404 })
 
+  // Rows created before segmentation was configurable have no stored config —
+  // normalize() falls back to the defaults for them.
+  const segmentation = normalizeSegmentation(video.index_config?.segmentation)
+
   // Never ingested — start over from the source URL instead of re-indexing nothing.
   if (!video.videodb_video_id) {
     try {
@@ -26,13 +31,14 @@ export async function POST(_request: Request, { params }: { params: Params }) {
         db_video_id: video.id,
         source_url: video.source_url,
         title: video.title,
+        segmentation,
       })
     } catch (error: any) {
       return new Response(error?.message || 'Ingest failed', { status: 502 })
     }
   } else {
     try {
-      await videodb.reindex(video.videodb_video_id, video.id)
+      await videodb.reindex(video.videodb_video_id, video.id, segmentation)
     } catch (error: any) {
       return new Response(error?.message || 'Reindex failed', { status: 502 })
     }

@@ -17,10 +17,31 @@ class ShotOut(BaseModel):
     metadata: Optional[dict[str, Any]] = None
 
 
+class SegmentationConfig(BaseModel):
+    """How VideoDB cuts the video into the scenes the analyzers run on.
+
+    `shot` suits edited footage where cuts are meaningful boundaries; `time` suits
+    continuous footage (lectures, streams, surveillance). Unset keys fall back to
+    the server defaults in `Settings`.
+    """
+
+    type: Literal["shot", "time"] = "shot"
+    # `time` only — fixed scene length.
+    seconds: Optional[int] = Field(default=None, ge=1, le=600)
+    # `shot` only — cut sensitivity, and a floor on how short a scene may be.
+    threshold: Optional[int] = Field(default=None, ge=1, le=100)
+    min_scene_len: Optional[int] = Field(default=None, ge=0, le=300)
+
+
 class IngestRequest(BaseModel):
     db_video_id: str = Field(description="Supabase videos.id — used for status writeback")
     source_url: str
     title: Optional[str] = None
+    segmentation: Optional[SegmentationConfig] = None
+
+
+class ReindexRequest(BaseModel):
+    segmentation: Optional[SegmentationConfig] = None
 
 
 class IngestResponse(BaseModel):
@@ -32,6 +53,7 @@ class IngestResponse(BaseModel):
     stream_url: Optional[str] = None
     player_url: Optional[str] = None
     status: str
+    segmentation: Optional[dict[str, Any]] = None
 
 
 class IndexEntry(BaseModel):

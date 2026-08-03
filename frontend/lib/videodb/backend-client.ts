@@ -4,6 +4,7 @@ import type {
   ClipResponse,
   IngestResponse,
   SearchResponse,
+  SegmentationConfig,
   Shot,
   TranscriptResponse,
 } from './types'
@@ -50,8 +51,12 @@ const post = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body) })
 
 export const videodb = {
-  ingest: (body: { db_video_id: string; source_url: string; title?: string }) =>
-    post<IngestResponse>('/api/videos/ingest', body),
+  ingest: (body: {
+    db_video_id: string
+    source_url: string
+    title?: string
+    segmentation?: SegmentationConfig
+  }) => post<IngestResponse>('/api/videos/ingest', body),
 
   detail: (videodbVideoId: string) =>
     request<{
@@ -73,10 +78,10 @@ export const videodb = {
       indexes: { name?: string; status?: string; record_count?: number }[]
     }>(`/api/videos/${videodbVideoId}/status`),
 
-  reindex: (videodbVideoId: string, dbVideoId?: string) =>
+  reindex: (videodbVideoId: string, dbVideoId?: string, segmentation?: SegmentationConfig) =>
     post<{ status: string }>(
       `/api/videos/${videodbVideoId}/reindex${dbVideoId ? `?db_video_id=${dbVideoId}` : ''}`,
-      {}
+      { segmentation }
     ),
 
   remove: (videodbVideoId: string) =>

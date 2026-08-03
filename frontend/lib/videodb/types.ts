@@ -1,5 +1,27 @@
 export type VideoStatus = 'pending' | 'ingesting' | 'indexing' | 'ready' | 'failed'
 
+export type SegmentationType = 'shot' | 'time'
+
+/**
+ * How VideoDB cuts a video into the scenes the analyzers run on. `shot` splits on
+ * the video's own cuts, `time` into fixed-length ranges. Mirrors the backend's
+ * `SegmentationConfig`.
+ */
+export interface SegmentationConfig {
+  type: SegmentationType
+  /** `time` only — scene length in seconds. */
+  seconds?: number
+  /** `shot` only — cut-detection sensitivity. */
+  threshold?: number
+  /** `shot` only — floor on how short a scene may be. */
+  min_scene_len?: number
+}
+
+/** The understanding settings a video was ingested with, replayed on re-index. */
+export interface VideoIndexConfig {
+  segmentation?: SegmentationConfig
+}
+
 export interface ProjectVideo {
   id: string
   project_id: string
@@ -16,6 +38,7 @@ export interface ProjectVideo {
   duration: number | null
   status: VideoStatus
   index_status: IndexStatus | null
+  index_config: VideoIndexConfig | null
   error: string | null
   created_at: string
   updated_at: string
@@ -24,6 +47,7 @@ export interface ProjectVideo {
 export interface IndexStatus {
   step?: string
   message?: string
+  segmentation?: SegmentationConfig
   analyzers?: { name?: string; status?: string }[]
   indexes?: { name?: string; status?: string; record_count?: number; error?: string }[]
 }
@@ -79,6 +103,8 @@ export interface IngestResponse {
   stream_url?: string | null
   player_url?: string | null
   status: string
+  /** What the backend actually resolved after applying its defaults. */
+  segmentation?: SegmentationConfig | null
 }
 
 export interface TranscriptSegment {

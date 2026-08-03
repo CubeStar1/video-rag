@@ -112,11 +112,16 @@ CREATE TABLE IF NOT EXISTS public.videos (
   duration numeric NULL,
   status text NOT NULL DEFAULT 'pending',
   index_status jsonb NULL,
+  index_config jsonb NULL,
   error text NULL,
   created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamptz DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT videos_pkey PRIMARY KEY (id)
 );
+
+-- The understanding settings (segmentation) a video was ingested with. Added after
+-- the table shipped, so existing databases need the ALTER as well as the column above.
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS index_config jsonb NULL;
 
 CREATE INDEX IF NOT EXISTS idx_videos_project_id
   ON public.videos(project_id);

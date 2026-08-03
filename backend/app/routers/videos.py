@@ -8,6 +8,7 @@ from app.schemas import (
     IndexEntry,
     IngestRequest,
     IngestResponse,
+    ReindexRequest,
     TranscriptResponse,
     VideoDetailResponse,
     VideoStatusResponse,
@@ -23,6 +24,10 @@ router = APIRouter(prefix="/api/videos", tags=["videos"])
 @router.post("/ingest", response_model=IngestResponse)
 def ingest(request: IngestRequest, background: BackgroundTasks) -> IngestResponse:
     """Upload a public URL into VideoDB, then index it in the background."""
+    segmentation = ingest_service.resolve_segmentation(
+        request.segmentation.model_dump(exclude_none=True) if request.segmentation else None
+    )
+
     update_video_row(
         request.db_video_id,
         {
@@ -48,11 +53,17 @@ def ingest(request: IngestRequest, background: BackgroundTasks) -> IngestRespons
             **payload,
             "status": "indexing",
             "error": None,
-            "index_status": {"step": "queued", "message": "Queued for indexing…"},
+            "index_status": {
+                "step": "queued",
+                "message": "Queued for indexing…",
+                "segmentation": segmentation,
+            },
         },
     )
 
-    background.add_task(ingest_service.run_indexing_pipeline, video.id, request.db_video_id)
+    background.add_task(
+        ingest_service.run_indexing_pipeline, video.id, request.db_video_id, segmentation
+    )
 
     return IngestResponse(
         videodb_video_id=video.id,
@@ -63,6 +74,7 @@ def ingest(request: IngestRequest, background: BackgroundTasks) -> IngestRespons
         stream_url=payload["stream_url"],
         player_url=payload["player_url"],
         status="indexing",
+        segmentation=segmentation,
     )
 
 
@@ -122,15 +134,27 @@ def reindex(
     videodb_video_id: str,
     background: BackgroundTasks,
     db_video_id: str | None = Query(default=None),
+    request: ReindexRequest | None = None,
 ) -> VideoStatusResponse:
-    background.add_task(ingest_service.run_indexing_pipeline, videodb_video_id, db_video_id)
+    segmentation = ingest_service.resolve_segmentation(
+        request.segmentation.model_dump(exclude_none=True)
+        if request and request.segmentation
+        else None
+    )
+    background.add_task(
+        ingest_service.run_indexing_pipeline, videodb_video_id, db_video_id, segmentation
+    )
     if db_video_id:
         update_video_row(
             db_video_id,
             {
                 "status": "indexing",
                 "error": None,
-                "index_status": {"step": "queued", "message": "Re-indexing…"},
+                "index_status": {
+                    "step": "queued",
+                    "message": "Re-indexing…",
+                    "segmentation": segmentation,
+                },
             },
         )
     return VideoStatusResponse(
