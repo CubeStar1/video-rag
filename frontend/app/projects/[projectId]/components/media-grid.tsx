@@ -1,9 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Film, Search } from 'lucide-react'
+import { Film, Plus, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VideoCard } from './video-card'
 import type { ProjectVideo } from '@/lib/videodb/types'
 
@@ -13,6 +13,7 @@ interface MediaGridProps {
   onDelete: (videoId: string) => void
   onReindex: (videoId: string) => void
   onPreview: (video: ProjectVideo) => void
+  onUpload: () => void
 }
 
 export function MediaGrid({
@@ -21,6 +22,7 @@ export function MediaGrid({
   onDelete,
   onReindex,
   onPreview,
+  onUpload,
 }: MediaGridProps) {
   const [search, setSearch] = useState('')
 
@@ -31,20 +33,13 @@ export function MediaGrid({
 
   return (
     <section className="mt-12">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
-        <Tabs defaultValue="video">
-          <TabsList className="bg-transparent p-0">
-            <TabsTrigger
-              value="video"
-              className="rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            >
-              Video
-              {videos.length > 0 && (
-                <span className="ml-1.5 text-xs text-muted-foreground">{videos.length}</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <h2 className="flex items-baseline gap-2 text-sm font-medium">
+          Videos
+          {videos.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">{videos.length}</span>
+          )}
+        </h2>
 
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -74,14 +69,20 @@ export function MediaGrid({
             </div>
             <div>
               <p className="text-sm font-medium">
-                {videos.length === 0 ? 'No videos yet' : 'No matches'}
+                {videos.length === 0 ? 'No footage yet' : 'No matches'}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {videos.length === 0
-                  ? 'Upload a video or paste a link to start asking questions about it.'
+                  ? 'Add a recording or paste a link — it gets indexed so you can search it by description.'
                   : 'Try a different search term.'}
               </p>
             </div>
+            {videos.length === 0 && (
+              <Button size="sm" variant="outline" onClick={onUpload}>
+                <Plus className="size-4" />
+                Add video
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
