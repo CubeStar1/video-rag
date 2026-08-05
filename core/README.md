@@ -1,4 +1,6 @@
-# VideoMind
+# FalconVQA
+
+**Fast Augmented Language-based CONversational Video Question Answering.**
 
 Video RAG. Splits a video into meaningful chunks, runs analyzers over them,
 rolls those up into video-level insight, and makes the whole thing searchable

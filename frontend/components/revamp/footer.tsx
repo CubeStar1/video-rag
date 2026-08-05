@@ -116,7 +116,7 @@ export function Footer() {
 
           <div className="col-span-4 lg:col-span-8 lg:col-start-9 flex flex-col items-start lg:items-end text-left lg:text-right">
             <h2 className="text-4xl font-medium leading-[1.1] tracking-tight text-white md:text-5xl lg:text-6xl mb-8 lg:mb-12">
-              VideoMind
+              FalconVQA
             </h2>
             <p className="text-neutral-400 text-lg max-w-sm lg:max-w-md">
               Retrieval-augmented generation for video — grounded answers, timecodes, and playable clips.

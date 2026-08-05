@@ -1,0 +1,112 @@
+---
+title: Configuration
+description: Every environment variable for core and the frontend, what it does, and what it defaults to.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+## core
+
+### Required
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Vision-language calls, answer synthesis, and the five LLM-backed aggregators |
+| `SUPABASE_URL` | Storage. Ingest cannot run without it |
+| `SUPABASE_SERVICE_ROLE_KEY` | Storage. Ingest cannot run without it |
+
+### Optional
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HF_TOKEN` | – | Required only for the `diarization` analyzer; its pyannote model is gated |
+| `VIDEOMIND_API_TOKEN` | – | Shared secret required on every non-public route. **Set this for any deployment reachable from off-box** |
+| `VIDEOMIND_BUCKET` | `videos` | Storage bucket name |
+| `VIDEOMIND_MAX_BYTES` | 4 GiB | Cap on a server-side fetch of a caller-supplied URL |
+| `VIDEOMIND_UI` | `1` | `0` disables the built-in web UI, same as `serve.py --api-only` |
+
+### Paths
+
+Every path is overridable, which is what makes it possible to point a second instance at its own
+data directory.
+
+| Variable | Default | Holds |
+|---|---|---|
+| `VIDEOMIND_ROOT` | the repo root | Base for the defaults below |
+| `VIDEOMIND_DATA` | `data/` | Everything the app writes. Wiping it is a full reset |
+| `VIDEOMIND_RECORDS` | `data/records` | One JSON record per video: chunks, analyzer output, aggregates |
+| `VIDEOMIND_VECTORDB` | `data/vectordb` | Qdrant's embedded storage |
+| `VIDEOMIND_UPLOADS` | `data/uploads` | Files posted as multipart, kept after upload |
+| `VIDEOMIND_CACHE` | `data/cache` | Videos pulled back from Storage to be decoded, keyed by content hash |
+| `VIDEOMIND_MEDIA` | `media/` | Read-only test assets, deliberately outside `data/` |
+| `VIDEOMIND_MODELS` | `data/models` | Downloaded weights (YOLO) |
+
+<Callout type="info">
+  `data/cache` is regenerable — deleting it costs a re-download, never data. `data/records` and
+  `data/vectordb` are not: together they are the analysis. Back those two up if anything.
+</Callout>
+
+## frontend
+
+```bash title="frontend/.env.local"
+# Supabase — rows, auth, and the project-assets bucket
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_ADMIN=""            # service-role key
+
+# The analysis backend
+CORE_API_URL="http://127.0.0.1:8077"
+CORE_API_TOKEN=""                        # must match VIDEOMIND_API_TOKEN in core/.env
+
+# Model providers — whichever you want in the model picker
+OPENAI_API_KEY=""
+GOOGLE_GENERATIVE_AI_API_KEY=
+XAI_API_KEY=""
+GROQ_API_KEY=""
+CEREBRAS_API_KEY=""
+
+# Transactional email (optional)
+NEXT_PUBLIC_RESEND_API_KEY=
+NEXT_PUBLIC_RESEND_DOMAIN=
+
+NEXT_PUBLIC_APP_NAME="FalconVQA"
+NEXT_PUBLIC_APP_ICON='/next.svg'
+```
+
+`CORE_API_URL` and `CORE_API_TOKEN` are read server-side only, in `lib/core/client.ts`. That
+client is never imported into a client component: core has no per-user auth, so every call is
+made by a route that has already checked ownership and resolved which video ids the caller may
+touch.
+
+### Available models
+
+The model picker is defined in `app/agent/lib/ai/models.ts`. Out of the box:
+
+| Provider | Models |
+|---|---|
+| OpenAI | `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.4-mini` |
+| Google | `gemini-2.5-flash` |
+| Groq | `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `moonshotai/kimi-k2-instruct` |
+| Cerebras | `llama3.1-8b`, `gpt-oss-120b` |
+
+A provider whose key is unset simply fails when selected; nothing else breaks.
+
+## Security posture
+
+<Callout type="warn">
+  **Core has no users, no projects, and no row-level security.** Whoever can reach the port can
+  read every video in it. `VIDEOMIND_API_TOKEN` is a boundary, not an authorisation model — it
+  stops the port from being one. All per-user scoping happens in the frontend: RLS on
+  `video_core`, plus every agent tool resolving the ids it is allowed to touch through a single
+  choke point before calling core.
+</Callout>
+
+For a deployment:
+
+1. Set `VIDEOMIND_API_TOKEN` in core and the matching `CORE_API_TOKEN` in the frontend.
+2. Do not expose core's port publicly. The frontend is the only client that needs it.
+3. Run with `--api-only` if the built-in UI is not wanted — it has no way to send the token
+   header, which is why `/` stays open when the UI is enabled.
+
+`/health`, `/docs`, `/redoc` and `/openapi.json` stay open regardless, so a deployment can be
+checked without the secret.

@@ -1,0 +1,105 @@
+---
+title: Discovery
+description: GET /health, GET /schema and GET /analyzers — what this install has loaded and what it can be asked.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+---
+
+## `GET /health`
+
+Liveness, plus what this instance has loaded. Open — no token required.
+
+```json
+{
+  "status": "ok",
+  "ui": true,
+  "storage": { "ok": true, "bucket": "videos", "error": null },
+  "analyzers": ["default_video", "diarization", "object_detection", "ocr", "people", "transcript"],
+  "aggregators": ["chapters", "cooccurrence", "entities", "entity_timelines", "events",
+                  "ner", "novelty", "object_entities", "sentiment", "speaker_stats",
+                  "stats", "summary"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `status` | `ok`, or `degraded` when Storage is unreachable |
+| `ui` | `false` when started with `--api-only` |
+| `storage` | Probe result: bucket name and the error, if any |
+| `analyzers` | Registered analyzer ids |
+| `aggregators` | Registered aggregator ids |
+
+<Callout type="info">
+  Storage is **probed**, not assumed. A bad key or a missing bucket would otherwise first surface
+  as a failed ingest, minutes later, on a background thread, in a job nobody is watching. When
+  `status` is `degraded` the server still answers reads; ingest will fail.
+</Callout>
+
+---
+
+## `GET /schema`
+
+What can be searched and filtered, in one call. Read this before constructing queries rather than
+guessing field names — this is the endpoint an agent should be pointed at.
+
+```json
+{
+  "analyzers": ["default_video", "diarization", "object_detection", "ocr", "people", "transcript"],
+  "exclusive_groups": [["diarization", "transcript"]],
+  "vector_fields": {
+    "combined": "whole flattened record (default)",
+    "description": "prose summary only",
+    "people": "person descriptions only",
+    "actions": "actions and what objects are used for",
+    "objects": "object names only"
+  },
+  "detail_levels": {
+    "minimal": "ids, timecodes, score, short snippet - for agents",
+    "standard": "plus description and facets - for the UI",
+    "full": "plus every nested record"
+  },
+  "filters": {
+    "video_ids": { "type": "list[str]", "matches": "any", "payload_field": "video_id" },
+    "min_people": { "type": "int", "matches": "gte", "payload_field": "people_count" }
+  },
+  "aggregators": {
+    "summary": { "depends_on": [], "uses_llm": true },
+    "entities": { "depends_on": ["people"], "uses_llm": true },
+    "entity_timelines": { "depends_on": ["entities"], "uses_llm": false }
+  }
+}
+```
+
+| Section | Use |
+|---|---|
+| `analyzers` | Which passes this install can run |
+| `exclusive_groups` | Sets that cannot be selected together, so a client can enforce it |
+| `vector_fields` | Valid values for `field` on `/query`, with what each embeds |
+| `detail_levels` | Valid values for `detail`, with what each returns |
+| `filters` | Every filter name, its type, its match kind (`any` / `exact` / `gte` / `lte`) and the payload field it maps to |
+| `aggregators` | Every aggregator with its dependencies and whether it bills API calls |
+
+<Callout type="info">
+  Discovery matters more than raw generality for an agent. Given a free-form filter object it
+  would otherwise have to guess field names and semantics; given this, it can construct a valid
+  query on the first try.
+</Callout>
+
+---
+
+## `GET /analyzers`
+
+The subset of `/schema` a UI needs to populate dropdowns.
+
+```json
+{
+  "analyzers": ["default_video", "diarization", "object_detection", "ocr", "people", "transcript"],
+  "fields": ["combined", "description", "people", "actions", "objects"],
+  "exclusive_groups": [["diarization", "transcript"]]
+}
+```
+
+`exclusive_groups` lists analyzer sets that cannot be selected together, so a client can grey the
+option out rather than discovering it as a `400` on submit.

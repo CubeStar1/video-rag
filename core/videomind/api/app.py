@@ -23,7 +23,7 @@ from ..vectordb.store import FILTER_SPEC
 from . import core, jobs, ui
 
 app = FastAPI(
-    title="VideoMind",
+    title="FalconVQA",
     version="0.1.0",
     description="Video RAG: chunk, analyse, aggregate, search and ask.",
 )

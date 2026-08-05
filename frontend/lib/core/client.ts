@@ -13,7 +13,7 @@ import type {
 } from './types'
 
 /**
- * Server-side client for core/ (VideoMind). Never import this into a client
+ * Server-side client for core/ (FalconVQA). Never import this into a client
  * component: core has no per-user auth, so every call is made by a route that
  * has already checked ownership and resolved which video ids the caller may
  * touch.

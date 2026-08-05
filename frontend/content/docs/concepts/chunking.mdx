@@ -1,0 +1,126 @@
+---
+title: Chunking
+description: Four boundary signals fused into cut points — the single biggest lever on how good the analysis turns out.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs'
+
+A chunk is the span every analyzer runs on and every vector describes. Cut in the wrong places
+and a scene description straddles two unrelated moments, a sentence is split mid-clause, and
+retrieval returns spans that are technically correct and practically useless.
+
+So chunking is asked about at upload time rather than defaulted silently.
+
+## The four signals
+
+Each detector runs once over the whole video and emits `(time, strength)` events.
+
+| Signal | Detector | Fires on |
+|---|---|---|
+| `speaker` | pyannote | A change of speaker |
+| `silence` | Silero VAD | A gap in speech |
+| `cut` | PySceneDetect | A hard visual cut |
+| `semantic` | CLIP frame embeddings | Visual drift — the shot is now of something else |
+
+Not every video offers every signal. Unbroken CCTV has no cuts; silent footage has no speaker
+turns; a static lecture recording has neither.
+
+## Fusion
+
+Events are combined into a single score curve over the video: each contributes a Gaussian bump
+of height `weight × strength`, so boundaries several detectors agree on reinforce each other.
+Peaks are then picked greedily, strongest first, with a minimum gap enforced so the result is
+not a run of back-to-back fragments.
+
+<Callout type="info">
+  **Weights renormalise over the signals that actually fired.** Without that, a preset doubles as
+  a granularity dial: on single-signal footage, `audio` and `video` produced 12 versus 63
+  boundaries from identical content. Renormalising means a preset expresses *which signals
+  matter*, not *how many cuts to make*.
+</Callout>
+
+## Three modes
+
+<Tabs items={['preset', 'weights', 'interval']}>
+
+<Tab value="preset">
+
+A named weighting of the four signals. Each preset's weights sum to 1.0.
+
+| Preset | speaker | silence | cut | semantic | Best for |
+|---|---|---|---|---|---|
+| `audio` | 0.35 | 0.35 | 0.15 | 0.15 | Podcasts, calls, lectures — anything carried by speech |
+| `video` | 0.15 | 0.15 | 0.35 | 0.35 | Surveillance, silent footage, b-roll, sports |
+| `audio_video` | 0.25 | 0.25 | 0.25 | 0.25 | Most footage — interviews, meetings, edited video |
+
+```json
+{ "mode": "preset", "preset": "audio_video", "min_duration": 5, "max_duration": 20 }
+```
+
+</Tab>
+
+<Tab value="weights">
+
+Your own weighting. At least one of `speaker`, `silence`, `cut`, `semantic` is required.
+
+Only the ratios among signals that actually fire matter — weight given to a signal producing no
+events is redistributed across the rest.
+
+```json
+{ "mode": "weights", "speaker": 2, "silence": 1, "min_duration": 5, "max_duration": 20 }
+```
+
+Custom weights are hashed into the stored `chunk_config` (`custom-87e6230f:5-15`). Without that
+hash, two different weightings sharing a min/max would collide and the second ingest would
+silently overwrite the first.
+
+</Tab>
+
+<Tab value="interval">
+
+Fixed spans. No detectors run at all.
+
+```json
+{ "mode": "interval", "interval": 20 }
+```
+
+`min_duration` and `max_duration` are **not** applied here: you asked for exact spans, so you get
+exactly those. Useful for benchmarking, for footage with no usable signal, and for making two
+videos directly comparable.
+
+</Tab>
+
+</Tabs>
+
+## Duration bounds
+
+`min_duration` (default 5s) and `max_duration` (default 20s) clamp the spans produced by fusion.
+They apply to `preset` and `weights`, never to `interval`.
+
+Short chunks give precise timecodes but thin context per vector; long chunks give richer
+descriptions but vaguer citations. The defaults sit where a scene description still reads as one
+coherent moment.
+
+## Choosing in the app
+
+The upload dialog exposes all three modes, with the preset options labelled by what they suit.
+The chosen config is stored on the row as `ingest_config` and replayed verbatim on re-index, so
+"re-run this the way it was run before" needs no extra state.
+
+A one-line summary appears on status surfaces:
+
+```
+Audio + video · 5–20s · 2 analyzers
+Fixed 20s chunks · 3 analyzers
+Custom weights (speaker, cut) · 5–20s · 2 analyzers
+```
+
+## Changing it later
+
+Re-indexing with a **different** chunking replaces the chunks and drops every vector that
+described the old ones — they no longer describe anything that exists. Re-indexing with the
+**same** chunking keeps what already ran and adds any newly requested analyzers.
+
+Because `chunk_config` is part of a vector's identity, one video can hold several chunkings side
+by side, and searches can be filtered to one of them with the `chunk_config` filter.

@@ -1,0 +1,93 @@
+---
+title: Errors
+description: Status codes, the error shape, and the failures that land on a job rather than on the request.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+## Shape
+
+Errors are FastAPI's standard envelope:
+
+```json
+{ "detail": "Unknown analyzer 'peple'; registered: ['default_video', 'diarization', ...]" }
+```
+
+Messages are written to be actionable. A request for an analyzer a video does not have returns the
+list of what it *does* have; a mistyped filter name returns the nearest match.
+
+## Status codes
+
+| Code | Meaning | Typical cause |
+|---|---|---|
+| `200` | Success | – |
+| `202` | Accepted, work started in the background | Both ingest routes, and the aggregate re-run |
+| `307` | Temporary redirect | `GET /media/{video_id}` → the Storage URL |
+| `400` | Bad request | Unknown analyzer, field, detail level, filter or aggregator; a mode missing its required parameters; mutually exclusive analyzers; a video that has no output from the requested analyzer |
+| `401` | Unauthorised | Missing or wrong `X-Core-Token` |
+| `404` | Not found | Unknown `video_id`, `chunk_id` or `job_id` |
+| `422` | Unprocessable | FastAPI validation — a wrong type, or a value outside a declared range |
+| `500` | Server error | An unhandled failure. The traceback is in the server log |
+
+## Request-time versus job-time failures
+
+<Callout type="warn">
+  Anything that can be checked while a caller is still there **is** checked before the `202`.
+  Everything after that fails the **job**, not the request.
+</Callout>
+
+Validated up front, returning `400`:
+
+- Unknown analyzer ids, and mutually exclusive pairs (`transcript` + `diarization`).
+- An unknown chunking `mode`, or a mode missing its required parameters
+  (`mode=weights` with no weights, `mode=interval` with no `interval`).
+- A URL whose scheme is not `http` or `https`.
+- An unknown aggregator id on the aggregate re-run.
+
+Discovered later, failing the job:
+
+- A URL that 404s, or serves an HTML error page instead of a video.
+- A download exceeding `VIDEOMIND_MAX_BYTES`.
+- A file that cannot be decoded.
+- A model provider outage during analysis.
+
+```json
+{
+  "job_id": "d9b16a609ab1",
+  "status": "failed",
+  "stage": "fetching",
+  "error": "ValueError: Downloaded content is not a video",
+  "detail": { "traceback": "…last 2000 characters…" }
+}
+```
+
+## Partial failure
+
+Some operations deliberately degrade rather than fail:
+
+| Situation | Behaviour |
+|---|---|
+| One aggregator raises | Recorded in `failed`; the others keep their results |
+| An aggregator's analyzer never ran | Listed in `skipped`, not `failed` |
+| Poster extraction fails | `poster_url` is null; the ingest still succeeds |
+| Storage delete fails during `DELETE /videos/{id}` | Reported as `storage_error`; vectors and record are still removed, because leaving those in place would keep a deleted video searchable |
+| An analyzer produces nothing for a chunk | That chunk is skipped for that analyzer; `indexed` counts drop accordingly |
+
+<Callout type="info">
+  A zero in `indexed` is normal, not an error — a silent video produces no transcript text, so
+  there is nothing to embed.
+</Callout>
+
+## Failure modes worth designing for
+
+**Jobs live in memory.** Restarting core loses job history; vectors and records survive on disk.
+A client polling a job that suddenly 404s should check whether the video exists
+(`GET /videos/{video_id}`) before declaring failure — the ingest may well have completed.
+
+**Storage degraded.** `GET /health` reports `status: "degraded"` and `storage.ok: false` when the
+bucket is unreachable. Reads still work; ingest will fail. Check here rather than discovering it
+minutes into a background job.
+
+**Core unreachable.** A client should distinguish "core said no" from "core did not answer" — the
+reference client wraps connection failures as a `503` with the URL it tried, because those two
+cases need very different messages in a UI.

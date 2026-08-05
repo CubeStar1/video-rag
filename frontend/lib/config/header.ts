@@ -17,8 +17,8 @@ export interface HeaderConfig {
 
 export const headerConfig: HeaderConfig = {
   brand: {
-    title: "VideoMind",
-    icon: "/next.svg"
+    title: "FalconVQA",
+    icon: "/logos/falcon-vqa-logo.png"
   },
   navigationLinks: [
     {
@@ -30,8 +30,8 @@ export const headerConfig: HeaderConfig = {
       label: "Projects"
     },
     {
-      href: "/architecture",
-      label: "Architecture"
+      href: "/docs",
+      label: "Documentation"
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "b3f1c2d4-8a55-4e7b-9c31-videomind0001",
-    "name": "VideoMind API",
+    "name": "FalconVQA API",
     "description": "Video RAG: chunk, analyse, aggregate, search and ask.\n\nBase URL defaults to `http://127.0.0.1:8077` (start with `python serve.py`).\n\n**Variables** — `baseUrl`, `videoId`, `jobId`, `chunkId`, `analyzer`, `aggregator`.\n\n**Auto-capture**: `POST /videos` stores `job_id` into `{{jobId}}`; `GET /jobs/{job_id}` stores `result.video_id` into `{{videoId}}` once the job is done; `GET /videos` falls back to the first listed video. So the usual flow is Upload → poll Job → everything else just works.\n\nThere is no auth. Everything is a read except `POST /videos` (spends time and money) and `POST /videos/{id}/aggregates` (spends LLM calls). `POST /query` and `POST /ask` are POSTs only because their bodies are too complex for a query string — they change nothing.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

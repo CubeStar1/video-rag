@@ -1,0 +1,108 @@
+---
+title: Ask
+description: POST /ask — question answering, routed to whichever video-level results can address the question.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`/query` finds segments; `/ask` answers questions, which usually needs more than segments.
+
+`application/json`.
+
+## Body
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `question` | string | *required* | Natural-language question |
+| `video_ids` | `string[]` \| null | `null` | Restrict to these videos. `null` uses every ingested video |
+| `analyzer` | string \| null | auto | Which analyzer's chunks to retrieve as supporting evidence |
+| `limit` | int | `6` | Supporting segments to retrieve per video, 1–20 |
+
+When `analyzer` is unset, core picks the first present on the video, in the order
+`default_video`, `people`, `diarization`, `transcript`, `object_detection`, `ocr`.
+
+## Example
+
+```bash
+curl -X POST http://127.0.0.1:8077/ask \
+  -H "X-Core-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What did the woman in the light grey shirt do?",
+    "video_ids": ["6b9ca6e1a1b2c3d4"]
+  }'
+```
+
+```json
+{
+  "question": "What did the woman in the light grey shirt do?",
+  "answer": "She worked the right-side checkout register for most of the recording, scanning items and handling payments [6b9ca6e1a1b2c3d4 0-24].",
+  "sources": {
+    "6b9ca6e1a1b2c3d4": { "routed_to": ["entities"], "entities": 4, "sections": 4, "chunks": 6 }
+  },
+  "results": [ { "…": "supporting segments, shaped as SearchResult at detail=standard" } ]
+}
+```
+
+## Routing
+
+The question is embedded against a description of what each aggregate answers, and the ones that
+stand out are pulled into context.
+
+```
+"what did the woman in the light gray shirt do"  ->  entities
+"which segments are unusual"                     ->  novelty
+"how busy was the store"                         ->  stats
+"what brands are visible"                        ->  ner
+"who was with the man in yellow shorts"          ->  cooccurrence, entities
+```
+
+<Callout type="info">
+  Selection is **relative** — how far a match stands above the average for that question — because
+  absolute thresholds do not survive real phrasing. The measured score mean shifted from 0.47 to
+  0.56 across questions, so any fixed cutoff either admitted everything or nothing.
+</Callout>
+
+## What goes into the answer
+
+Context is assembled from four sources, per video:
+
+1. The **routed aggregates** — the cross-segment conclusions that retrieval structurally cannot
+   recover.
+2. The **video summary**.
+3. The **summary sections nearest the question**.
+4. The **retrieved segments** — `limit` of them, from the chosen analyzer.
+
+Answers cite `[video_id start-end]`. `sources` reports what was consulted per video, including
+which aggregates it routed to and how many of each element were used — worth surfacing, because
+it explains why an answer knows something no single segment says.
+
+## Why this over `/query`
+
+A search returns the five moments most similar to a phrase. That is the right tool for "find the
+part where…" and the wrong one for "how busy was it" — which needs every chunk counted, not the
+five that best match the word "busy".
+
+Aggregates already contain that reasoning. Routing to them is cheaper and more accurate than
+retrieving ten moments and asking a model to reason over them.
+
+## Empty cases
+
+```json
+{ "question": "…", "answer": null, "sources": {}, "results": [], "error": "No videos ingested." }
+```
+
+| `error` | Cause |
+|---|---|
+| `"No videos ingested."` | The install has no videos, and none were named |
+| `"Nothing indexed for the requested videos."` | The named ids do not resolve to records with usable context |
+
+Both come back as `200` with `answer: null` — they are answers about the corpus, not request
+failures.
+
+## Errors
+
+| Code | Cause |
+|---|---|
+| `400` | Unknown `analyzer` |
+| `401` | Missing or wrong token |

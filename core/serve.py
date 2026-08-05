@@ -1,4 +1,4 @@
-"""Start VideoMind.
+"""Start FalconVQA.
 
     python serve.py                # API + web UI
     python serve.py --api-only     # API only, no UI
@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the VideoMind server.")
+    parser = argparse.ArgumentParser(description="Run the FalconVQA server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8077)
     parser.add_argument("--reload", action="store_true", help="restart on code changes")
@@ -35,7 +35,7 @@ def main() -> None:
     import uvicorn
 
     what = "API" if args.api_only else "API + UI"
-    print(f"VideoMind ({what}) -> http://{args.host}:{args.port}")
+    print(f"FalconVQA ({what}) -> http://{args.host}:{args.port}")
     if not args.api_only:
         print(f"  UI    http://{args.host}:{args.port}/")
     print(f"  docs  http://{args.host}:{args.port}/docs")

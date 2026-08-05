@@ -1,4 +1,4 @@
--- video_core — the application's view of a video analysed by core/ (VideoMind).
+-- video_core — the application's view of a video analysed by core/ (FalconVQA).
 --
 -- Purely additive. `videos` (the VideoDB-shaped table) is left in place and is
 -- no longer read by anything; nothing here drops or alters it.

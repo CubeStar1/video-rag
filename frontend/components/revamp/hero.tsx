@@ -107,7 +107,8 @@ export function Hero() {
               Anything
             </h1>
             <p className="max-w-xl text-base md:text-lg">
-              VideoMind is retrieval-augmented generation for video. It splits footage into meaningful scenes, understands what was said and shown, and answers in plain language.
+              <span className="text-white">Fast Augmented Language-based CONversational Video Question Answering.</span>{' '}
+              FalconVQA splits footage into meaningful scenes, understands what was said and shown, and answers in plain language.
               <br />
               Every answer comes back with timecodes and playable clips.
             </p>
@@ -131,7 +132,7 @@ export function Hero() {
 
             <li className="w-full">
               <SlideUpLink
-                href="/architecture"
+                href="/docs"
                 label="See How It Works"
                 variant="secondary"
                 size="md"
@@ -159,7 +160,7 @@ export function Hero() {
               <div className="bg-[#141414] rounded overflow-hidden border border-white/5 shadow-sm">
                 <Image
                   src="/landing/video-mind-dash.png"
-                  alt="VideoMind workspace: agent chat, scene timeline, and clip reel panel"
+                  alt="FalconVQA workspace: agent chat, scene timeline, and clip reel panel"
                   width={2400}
                   height={1600}
                   quality={100}
@@ -180,7 +181,7 @@ export function Hero() {
             <div className="rounded overflow-hidden bg-[#141414] border border-white/5 shadow-sm">
                 <Image
                 src="/landing/video-mind-dash.png"
-                alt="VideoMind workspace: agent chat, scene timeline, and clip reel panel"
+                alt="FalconVQA workspace: agent chat, scene timeline, and clip reel panel"
                 width={1200}
                 height={800}
                 className="w-full h-auto"

@@ -1,7 +1,7 @@
 # VideoDB → core migration plan
 
 Replacing the VideoDB pipeline (`backend/` + the `videos` table) with `core/`
-(VideoMind). Written after reading both sides end to end; every file named here
+(FalconVQA). Written after reading both sides end to end; every file named here
 exists today.
 
 The single fact that drives the whole redesign: **core returns mp4 URLs, not HLS

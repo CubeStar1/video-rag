@@ -1,0 +1,239 @@
+---
+title: Aggregates
+description: Reading and re-running the twelve video-level results.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+---
+
+## `GET /videos/{video_id}/aggregates`
+
+Video-level results. Pass `?aggregator=summary` for one, or omit for all.
+
+### All
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "available": ["chapters", "events", "ner", "novelty", "stats", "summary"],
+  "aggregates": { "summary": { "…": "…" }, "chapters": { "…": "…" } }
+}
+```
+
+### One
+
+```json
+{ "video_id": "95e110e25070fcfc", "aggregator": "summary", "result": { "…": "…" } }
+```
+
+<Callout type="warn">
+  Requesting an aggregate the video does not have is a **400**, and the message lists what it does
+  have — which is exactly the correction a caller needs. `404` is reserved for an unknown video.
+</Callout>
+
+### The twelve
+
+| Aggregator | Depends on | LLM | Produces |
+|---|---|---|---|
+| `stats` | – | no | Counts over time, busiest/quietest moment, speech totals |
+| `novelty` | – | no | Chunks ranked by how unlike the rest they are, plus outliers |
+| `speaker_stats` | `diarization` | no | Talk time, turns, handovers, share per speaker |
+| `sentiment` | `diarization` | no | Sentiment of spoken language, per speaker and over time |
+| `ner` | – | no | Named entities across speech, scene text and OCR |
+| `summary` | – | **yes** | Tiered summaries, finest first, plus key points and topics |
+| `chapters` | – | **yes** | Consecutive chunks grouped into titled sections |
+| `events` | – | **yes** | Discrete timestamped events with actor and category |
+| `entities` | `people` | **yes** | People linked across chunks, with narratives |
+| `entity_timelines` | `entities` | no | Presence and dwell time per person |
+| `cooccurrence` | `entities` | no | Which people appear together |
+| `object_entities` | `object_detection` | **yes** | Objects tracked across chunks |
+
+An aggregator whose analyzer the video lacks is **skipped, not failed**.
+
+### Shapes
+
+`summary`
+
+```json
+{
+  "summary": "…a few sentences covering the whole video",
+  "key_points": ["…"],
+  "topics": ["…"],
+  "depth": 4,
+  "tiers": [{ "level": 0, "section_count": 8,
+              "sections": [{ "summary": "…", "start": 0.0, "end": 24.0, "chunk_ids": [0, 1, 2] }] }],
+  "sections": [ "…tier 0, repeated for retrieval" ],
+  "based_on": ["default_video", "diarization"]
+}
+```
+
+`tiers[0]` is the finest level and the last is the whole video. Depth follows length rather than a
+fixed block size — a 39-chunk video produced 4 tiers of 8 / 4 / 2 / 1 sections.
+
+`chapters`
+
+```json
+{
+  "chapters": [{ "title": "Checkout rush", "summary": "…", "first_chunk": 4, "last_chunk": 11,
+                 "start": 96.0, "end": 240.0, "chunk_ids": [4, 5, 6, 7, 8, 9, 10, 11] }],
+  "based_on": ["default_video"]
+}
+```
+
+`events`
+
+```json
+{
+  "events": [{ "event": "A customer approaches the register", "chunk_id": 12,
+               "actor": "woman in a grey coat", "category": "arrival",
+               "start": 240.0, "end": 258.4 }],
+  "categories": { "arrival": 4, "transaction": 2 },
+  "based_on": ["default_video", "people"]
+}
+```
+
+`stats`
+
+```json
+{
+  "duration": 300.4,
+  "chunks": 39,
+  "analyzers": ["default_video", "people"],
+  "people": {
+    "series": [{ "start": 0.0, "end": 6.9, "people_count": 3 }],
+    "min": 0, "max": 11, "mean": 4.2, "total_observations": 164,
+    "busiest": { "start": 120.0, "end": 140.0, "count": 11 },
+    "quietest": { "start": 0.0, "end": 6.9, "count": 0 }
+  },
+  "objects": { "distinct": 42, "most_common": [["shopping cart", 31]] }
+}
+```
+
+`novelty`
+
+```json
+{
+  "basis": "default_video",
+  "mean_distance": 0.2841,
+  "ranked": [{ "chunk_id": 27, "start": 540.0, "end": 558.0, "novelty": 0.61 }],
+  "outliers": [ "…more than two standard deviations from the mean" ]
+}
+```
+
+`speaker_stats`
+
+```json
+{
+  "speakers": [{ "speaker": "SPEAKER_00", "seconds": 184.2, "turns": 41, "share": 0.62 }],
+  "speaker_count": 2, "total_turns": 66, "handovers": 39,
+  "total_speech_seconds": 297.1, "dominant_speaker": "SPEAKER_00",
+  "timeline": [{ "start": 1.2, "end": 4.8, "speaker": "SPEAKER_00" }]
+}
+```
+
+`sentiment`
+
+```json
+{
+  "model": "…",
+  "overall": { "positive": 0.41, "neutral": 0.5, "negative": 0.09 },
+  "dominant": "neutral",
+  "per_speaker": [ "…" ],
+  "timeline": [ "…" ],
+  "note": "Sentiment of language used, not inferred emotion; ASR errors propagate."
+}
+```
+
+`ner`
+
+```json
+{
+  "entities": [{ "text": "Tesco", "label": "ORG", "count": 6 }],
+  "by_label": { "ORG": 4, "PERSON": 2 },
+  "labels_used": ["ORG", "PERSON", "GPE"],
+  "based_on": ["diarization", "ocr"]
+}
+```
+
+`entities`, `entity_timelines`, `cooccurrence` — see [Entities](/docs/api/entities).
+
+`object_entities`
+
+```json
+{
+  "objects": [ "…linked object tracks with narratives" ],
+  "total": 18, "linked": 11, "unlinked": 7, "observations": 240, "narrated": 11,
+  "fixtures": [["checkout counter", 39]],
+  "people_sightings": 164
+}
+```
+
+Fixtures are counted but not tracked: "the counter was present throughout" is true of every frame
+and tells a search nothing.
+
+---
+
+## `POST /videos/{video_id}/aggregates`
+
+Re-run aggregators over already-analysed output. Returns **202** and a `job_id` to poll.
+
+| Param | In | Type | Default | Notes |
+|---|---|---|---|---|
+| `aggregators` | form | string | all | Comma-separated ids |
+| `force` | query | bool | `true` | Recompute even when already stored |
+
+```bash
+curl -X POST "http://127.0.0.1:8077/videos/95e110e25070fcfc/aggregates?force=true" \
+  -H "X-Core-Token: $TOKEN" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data "aggregators=summary,chapters"
+```
+
+```json
+{ "job_id": "9f2c1a77b410", "status": "queued", "video_id": "95e110e25070fcfc" }
+```
+
+### Job result
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "ran": ["summary", "chapters"],
+  "reused": ["stats", "novelty", "ner"],
+  "skipped": ["sentiment", "speaker_stats"],
+  "failed": {},
+  "aggregates": ["chapters", "ner", "novelty", "stats", "summary"],
+  "recomputed_because_analyzers_changed": false,
+  "llm_calls_saved": []
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `ran` | Computed this time |
+| `reused` | Already stored — pass `force=true` to recompute |
+| `skipped` | Dependencies this video cannot satisfy |
+| `failed` | `{aggregator: "TypeName: message"}` — one failing does not lose the others' work |
+| `aggregates` | Everything now stored for the video |
+| `recomputed_because_analyzers_changed` | The analyzer set changed, so everything was recomputed regardless of `force` |
+| `llm_calls_saved` | Which of the reused ones would have billed API calls |
+
+<Callout type="info">
+  Aggregators read stored analyzer output rather than the video, so this costs **no re-analysis**.
+  It is the cheap half of re-processing — re-summarising or re-linking entities after tuning costs
+  only the LLM calls for the five aggregators that make them.
+</Callout>
+
+<Callout type="warn">
+  Aggregates are recomputed automatically when the **analyzer set changes**. A summary written
+  before `people` ran describes a video it could not see people in, and serving it would be
+  confidently out of date.
+</Callout>
+
+### Errors
+
+| Code | Cause |
+|---|---|
+| `400` | Unknown aggregator id |
+| `404` | Unknown video |

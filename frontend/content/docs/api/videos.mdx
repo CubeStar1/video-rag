@@ -1,0 +1,132 @@
+---
+title: Videos
+description: Listing, reading, deleting a video, and the media redirect.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+---
+
+## `GET /videos`
+
+Every ingested video. Built from the JSON records on disk, so only videos ingested through this
+install appear.
+
+```json
+{
+  "videos": [
+    {
+      "video_id": "95e110e25070fcfc",
+      "filename": "clip.mp4",
+      "video_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4",
+      "poster_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/poster.jpg",
+      "duration": 300.4,
+      "chunks": 39,
+      "chunk_config": "audio_video:5-20",
+      "analyzers": ["default_video", "diarization"]
+    }
+  ]
+}
+```
+
+<Callout type="warn">
+  This lists **the whole install**, with no notion of who owns what. A multi-tenant deployment
+  should not proxy it through to a user — keep your own rows and list from those. See
+  [Authentication](/docs/api/authentication).
+</Callout>
+
+---
+
+## `GET /videos/{video_id}`
+
+One video's metadata, in more detail than the listing.
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "filename": "clip.mp4",
+  "video_url": "https://…/95e110e25070fcfc/clip.mp4",
+  "poster_url": "https://…/95e110e25070fcfc/poster.jpg",
+  "storage_path": "95e110e25070fcfc/clip.mp4",
+  "source_url": "https://example.com/clip.mp4",
+  "size_bytes": 48213402,
+  "preset": "audio_video",
+  "params": { "min_duration": 5, "max_duration": 20 },
+  "chunk_config": "audio_video:5-20",
+  "analyzers": ["default_video", "diarization"],
+  "aggregates": ["chapters", "events", "ner", "novelty", "stats", "summary"],
+  "chunks": 39,
+  "duration": 300.4
+}
+```
+
+| Field | Notes |
+|---|---|
+| `analyzers` | Which passes have output on this video — the predicate for "can it answer X?" |
+| `aggregates` | Which video-level results are stored |
+| `duration` | The container's own duration as recorded at ingest. Falls back to the last chunk's end for records written before posters existed |
+| `source_url` | Where it was ingested from, when it came from a URL |
+
+**404** for an unknown id.
+
+---
+
+## `DELETE /videos/{video_id}`
+
+Removes a video completely: its vectors, its record, its bucket objects, and its cached local
+copy.
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "deleted": true,
+  "objects": ["95e110e25070fcfc/clip.mp4", "95e110e25070fcfc/poster.jpg"]
+}
+```
+
+Every store is dropped in one call because partial deletion is worse than none — vectors without a
+record are uncitable, and an object without either is unreachable bytes nothing will ever collect.
+
+A Storage failure is **reported rather than raised**:
+
+```json
+{ "video_id": "…", "deleted": true, "objects": ["…"], "storage_error": "StorageException: …" }
+```
+
+The record and the vectors are what make a video *visible*; leaving those in place because the
+bucket call failed would keep a deleted video searchable.
+
+<Callout type="warn">
+  `video_id` is a content hash, so two callers who ingested the same bytes are referring to the
+  **same** video. Whoever owns the application-side rows has to decide that nothing else still
+  points at it before calling this — core has no notion of who else is interested.
+</Callout>
+
+**404** for an unknown id.
+
+---
+
+## `GET /media/{video_id}`
+
+**307** to the video in Storage, which serves the bytes and handles `Range` itself — so seeking
+works and video never transits the API process.
+
+```
+GET /media/95e110e25070fcfc
+
+HTTP/1.1 307 Temporary Redirect
+Location: https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4
+```
+
+The bucket is public, so `video_url` in any response plays directly and this endpoint is not
+required. It exists because:
+
+- It is the **only media URL derivable from a `video_id` alone** — which is all a search hit at
+  `detail=minimal` carries.
+- It is the one place that changes if the bucket is ever made private, at which point this
+  function mints a signed URL and nothing else moves.
+
+`307` rather than `301`/`308` on purpose: it preserves the method and is not cached, so a later
+move to signed URLs cannot be defeated by a stale browser cache.
+
+**404** if the id is unknown.

@@ -19,7 +19,7 @@ export interface FooterConfig {
 
 export const footerConfig: FooterConfig = {
   brand: {
-    title: "VideoMind",
+    title: "FalconVQA",
     description: "Retrieval-augmented generation for video — grounded answers, timecodes, and playable clips."
   },
   sections: [
@@ -38,5 +38,5 @@ export const footerConfig: FooterConfig = {
       ]
     }
   ],
-  copyright: `© ${new Date().getFullYear()} VideoMind. All rights reserved.`
+  copyright: `© ${new Date().getFullYear()} FalconVQA. All rights reserved.`
 }

@@ -1,4 +1,6 @@
-# Video RAG
+# FalconVQA
+
+**Fast Augmented Language-based CONversational Video Question Answering.**
 
 Ask questions about your videos and get answers grounded in what was actually said and shown,
 with timestamps and playable clips.

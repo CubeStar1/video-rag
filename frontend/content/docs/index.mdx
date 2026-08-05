@@ -1,0 +1,111 @@
+---
+title: What is FalconVQA
+description: Fast Augmented Language-based CONversational Video Question Answering — chunk footage into meaningful scenes, understand what was said and shown, and answer questions with timecodes and playable clips.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+**FalconVQA** — *Fast Augmented Language-based CONversational Video Question Answering* — is
+**retrieval-augmented generation for video**. Point it at footage and it splits
+the video into meaningful chunks, runs a set of analyzers over every chunk, rolls those results
+up into video-level insight, and indexes all of it so the whole thing can be searched or asked
+questions of.
+
+```
+video ─▶ chunk ─▶ analyze ─▶ index ─▶ aggregate ─▶ search / ask
+```
+
+Every answer is grounded in a specific moment. Nothing is answered from the model's memory —
+if a claim is not in a retrieved segment or a stored video-level result, it does not get made.
+
+![The FalconVQA workspace: agent chat, scene timeline and clip reel panel](/landing/video-mind-dash.png)
+
+## Two pieces
+
+FalconVQA ships as two independently runnable services.
+
+<Cards>
+  <Card
+    title="core — the analysis engine"
+    href="/docs/api"
+    description="A FastAPI service that owns chunking, analysis, indexing, aggregation, search and question answering. No users, no projects — one HTTP API over a corpus of videos."
+  />
+  <Card
+    title="frontend — the product"
+    href="/docs/workspace/projects"
+    description="A Next.js app with projects, uploads, an AI agent with nine video tools, a clip artifact panel and a per-video analysis explorer. Owns auth, ownership and conversation history."
+  />
+</Cards>
+
+The split is deliberate: `core` is the thing worth selling as a service, and the frontend is one
+client of it. Everything the product does, it does through the same public HTTP API documented
+under [API Reference](/docs/api).
+
+## What it can answer
+
+| You ask | What runs |
+|---|---|
+| "Summarise this video" / "What is this about?" | `ask_video` → routed to the summary and chapter aggregates |
+| "Find the part where they discuss pricing" | `search_moments` → vector search over chunk records |
+| "Show me every clip of the man in yellow shorts" | search → `show_clips` → the artifact panel |
+| "What exactly was said at 2:30?" | `get_video_transcript` → diarized speech lines |
+| "How busy was the store?" | `get_video_insights` with `stats` |
+| "Who was in this, and what did each person do?" | `get_video_entities` → people linked across the whole video |
+| "Which segments are unusual?" | `get_video_insights` with `novelty` |
+
+## Key ideas
+
+<Cards>
+  <Card
+    title="Content-aware chunking"
+    href="/docs/concepts/chunking"
+    description="Four boundary signals — speaker changes, silence, hard cuts, semantic drift — fused under a weighting, instead of a fixed clock."
+  />
+  <Card
+    title="Six analyzers"
+    href="/docs/concepts/analyzers"
+    description="Scene description, transcript, diarization, OCR, people and object detection. Chosen per upload, because their costs differ wildly."
+  />
+  <Card
+    title="Twelve aggregators"
+    href="/docs/concepts/aggregators"
+    description="Video-level passes: summaries, chapters, events, stats, novelty, named entities, sentiment, linked people and objects."
+  />
+  <Card
+    title="Retrieval that fits the caller"
+    href="/docs/concepts/retrieval"
+    description="Named vectors per chunk, typed filters, and three detail levels — because a browser and an agent want opposite things from the same hit."
+  />
+</Cards>
+
+<Callout type="info">
+  Everything except the VLM calls and answer synthesis runs locally: BGE embeddings, Qdrant,
+  Whisper, pyannote, YOLO, EasyOCR and CLIP all execute on your own hardware. Your footage never
+  leaves your infrastructure except as frames sent to the vision model you configured.
+</Callout>
+
+## Start here
+
+<Cards>
+  <Card
+    title="Quickstart"
+    href="/docs/getting-started/quickstart"
+    description="Both services running and a first question answered, in about fifteen minutes."
+  />
+  <Card
+    title="Installation"
+    href="/docs/getting-started/installation"
+    description="The full local stack: core, Supabase, storage buckets and the Next.js app."
+  />
+  <Card
+    title="API Reference"
+    href="/docs/api"
+    description="Every core endpoint, its parameters, its response shape and its failure modes."
+  />
+  <Card
+    title="Architecture"
+    href="/docs/architecture"
+    description="How a request travels from the chat box to a vector search and back as a playable clip."
+  />
+</Cards>

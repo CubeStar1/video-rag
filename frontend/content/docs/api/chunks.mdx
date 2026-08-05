@@ -1,0 +1,120 @@
+---
+title: Chunks
+description: Reading stored analyzer output — the read counterpart to search.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`/query` searches. These endpoints **read**: fetch what an analyzer produced rather than
+retrieving against it. Everything is served from the JSON record on disk, so it costs nothing —
+no model calls, no vector search.
+
+---
+
+## `GET /videos/{video_id}/chunks`
+
+### Parameters
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `analyzer` | string | all | Restrict to one analyzer's output |
+| `after` | float | – | Keep chunks ending after this second |
+| `before` | float | – | Keep chunks starting before this second |
+| `chunk_ids` | string | – | Comma-separated ids, e.g. `2,4,7` — batch fetch after a `minimal` search |
+| `limit` | int | `50` | 1–500 |
+| `offset` | int | `0` | Pagination |
+| `verbose` | bool | `false` | Include internal keys |
+
+### Response
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "analyzers": ["default_video", "diarization"],
+  "total": 39,
+  "offset": 0,
+  "limit": 2,
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "start": 0.0,
+      "end": 6.9,
+      "timecode": "0:00.00-0:06.90",
+      "default_video": {
+        "description": "A customer walks toward the checkout counter…",
+        "setting": "supermarket interior",
+        "people": ["a woman in a grey coat"],
+        "objects": ["shopping cart", "register"],
+        "actions": ["walking", "pushing a cart"],
+        "tags": ["checkout", "retail"]
+      },
+      "diarization": {
+        "turns": [{ "speaker": "SPEAKER_00", "start": 1.2, "end": 4.8, "text": "…" }],
+        "speakers": ["SPEAKER_00"]
+      }
+    }
+  ]
+}
+```
+
+`total` is the number of chunks matching the filters, not the page size — page with
+`offset`/`limit` until you have them all.
+
+### The batch-fetch pattern
+
+<Callout type="info">
+  This is the second half of the cheap retrieval pattern. Run `/query` at `detail=minimal` to
+  decide which moments matter, then fetch only those here with `chunk_ids=2,4,7`. Measured: about
+  1.6k tokens instead of 19k for the same five moments at full detail.
+</Callout>
+
+```bash
+curl "http://127.0.0.1:8077/videos/95e110e25070fcfc/chunks?chunk_ids=2,4,7" \
+  -H "X-Core-Token: $TOKEN"
+```
+
+### Stripped keys
+
+By default, keys beginning with `_` (`_frames`, `_detector_labels`) and `locations` are removed.
+`locations` is per-frame box geometry that only the entity-linking pass needs — a wall of pixel
+coordinates is noise to anything reading this for meaning, and expensive noise to an LLM.
+
+Pass `verbose=true` when debugging.
+
+### Errors
+
+| Code | Cause |
+|---|---|
+| `400` | `chunk_ids` is not comma-separated integers; or the video has no output from the requested analyzer — the message lists what it does have |
+| `404` | Unknown video |
+
+---
+
+## `GET /videos/{video_id}/chunks/{chunk_id}`
+
+One chunk, with every analyzer's output merged onto it.
+
+| Param | Type | Default |
+|---|---|---|
+| `verbose` | bool | `false` |
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "chunk_id": 12,
+  "start": 240.0,
+  "end": 258.4,
+  "timecode": "4:00.00-4:18.40",
+  "default_video": { "…": "…" },
+  "diarization": { "…": "…" },
+  "people": { "people": [{ "…": "…" }], "people_count": 3 }
+}
+```
+
+**404** if the chunk does not exist in that video.
+
+<Callout type="warn">
+  `chunk_id` is a position within one video's chunk list — every video has a chunk 0, and the same
+  id means a different moment after a re-chunking. Always pair it with a `video_id`, and never
+  persist one across a chunking change.
+</Callout>

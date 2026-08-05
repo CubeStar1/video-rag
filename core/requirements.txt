@@ -1,4 +1,4 @@
-# VideoMind — pinned to a verified working set on Python 3.13 + CUDA 13.0.
+# FalconVQA — pinned to a verified working set on Python 3.13 + CUDA 13.0.
 #
 # Install torch first, from the PyTorch index matching your CUDA version:
 #

@@ -1,0 +1,73 @@
+---
+title: Clips and the artifact panel
+description: How retrieved moments become a playable reel, and why a clip is a range rather than a stream.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When the answer is something to watch, the agent calls `show_clips` and the right-hand **artifact
+panel** opens: a player on top, the clip list below. Clicking a row seeks to that moment; **Play
+all** plays them back to back. The chat message stays short and cites `m:ss` timecodes.
+
+## A clip is a range
+
+<Callout type="info">
+  There is no per-clip URL anywhere in the system. A video is one mp4; a moment is that mp4 plus a
+  `(start, end)` pair. The panel loads the file once and seeks, so several clips from one video
+  cost one load between them.
+</Callout>
+
+This is why there is no "make me a clip" tool — there is nothing to build. `show_clips` is a
+pass-through: it echoes its input so the client can render, with no backend call, because the
+moments were already retrieved by `search_moments` or `ask_video`.
+
+Each clip carries:
+
+| Field | Purpose |
+|---|---|
+| `video_id` | Which video, for citation and grouping |
+| `url` | The video's mp4, exactly as the retrieval tool returned it |
+| `start`, `end` | Seconds — the range to play |
+| `label` | Short caption for the row |
+| `text` | Scene description or transcript snippet |
+| `score` | Retrieval score, when the moments came from a search |
+| `poster_url` | Thumbnail for the row |
+
+`identifier` is a stable id for the panel: reusing it updates the same panel instead of opening a
+new one, which is what makes "now add the ones from the second video" work.
+
+## Where the URL comes from
+
+The tool layer maps core's `video_id` to the row's `playback_url` before the model ever sees a
+moment, so the model passes back a URL it was handed rather than constructing one. A raw core
+`video_url` is never composed by the model, and never pasted into chat.
+
+## The document artifact
+
+`show_artifact` opens the same panel with markdown or code instead of clips — the right surface
+for a full written summary or a transcript written up in full, where the chat thread would be the
+wrong shape.
+
+The panel also renders reconstructed PDF documents when a conversation includes one.
+
+## The timeline studio
+
+Beside the clip reel, a video can be opened in the **studio timeline**: one video, its full
+duration, and three lanes you can jump into.
+
+| Lane | Source |
+|---|---|
+| **Scenes** | One entry per chunk — description, on-screen text, tags, visible objects |
+| **Transcript** | Speaker turns, or plain transcript segments when the video was analysed without diarization |
+| **Chapters** | Titled spans from the `chapters` aggregate, with events overlaid |
+
+Everything the studio needs arrives in one round trip from `GET /api/videos/{id}/timeline`, which
+flattens core's output into those lanes. Sources settle independently — a video analysed without
+`chapters` still renders its scenes and transcript, and the failures are reported rather than
+blanking the panel.
+
+<Callout type="info">
+  The timeline route is deliberately not the same call as the video detail page. That one keeps
+  core's shapes exactly as returned, because the detail page exists to show what was stored; this
+  one flattens into display lanes and drops whatever does not fit.
+</Callout>

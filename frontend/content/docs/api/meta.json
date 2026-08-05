@@ -1,0 +1,21 @@
+{
+  "title": "API Reference",
+  "pages": [
+    "index",
+    "authentication",
+    "errors",
+    "---Endpoints---",
+    "discovery",
+    "ingestion",
+    "jobs",
+    "videos",
+    "chunks",
+    "query",
+    "ask",
+    "aggregates",
+    "entities",
+    "---Reference---",
+    "objects",
+    "client-integration"
+  ]
+}

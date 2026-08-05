@@ -1,0 +1,17 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "---Introduction---",
+    "index",
+    "getting-started",
+    "---Concepts---",
+    "concepts",
+    "---Using FalconVQA---",
+    "workspace",
+    "---API Reference---",
+    "api",
+    "---Reference---",
+    "architecture",
+    "troubleshooting"
+  ]
+}

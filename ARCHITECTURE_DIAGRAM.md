@@ -1,4 +1,4 @@
-# VideoMind — Architecture Diagram Spec
+# FalconVQA — Architecture Diagram Spec
 
 Prompt-ready description of the system architecture, written for an image-generation API.
 Style follows the reference architecture poster: colored tabbed group boxes, pale bullet
@@ -75,7 +75,7 @@ Small chip row: OpenAI · Google · Groq · Cerebras · xAI
 
 ---
 
-### 3. VideoMind Service (center-right, red tab)
+### 3. FalconVQA Service (center-right, red tab)
 
 Row of blue capability chips: `Ingest` · `Analyzers` · `Aggregators` · `Vector Search` ·
 `Ask` · `Jobs`
@@ -174,12 +174,12 @@ Keep only these ten. Do not label the pipeline's internal arrows — they are se
 | # | From → To | Label |
 |---|---|---|
 | 1 | Client App → Supabase Storage | Upload video file |
-| 2 | Client App → VideoMind Service | Submit for ingestion |
-| 3 | VideoMind Service → Phase 1 | Start ingest job |
+| 2 | Client App → FalconVQA Service | Submit for ingestion |
+| 3 | FalconVQA Service → Phase 1 | Start ingest job |
 | 4 | Phase 1 → 2 → 3 → 4 → 5 | *(unlabeled)* |
 | 5 | Phase 3 → Data & Storage | Write vectors and records |
-| 6 | VideoMind Service → Client App | Poll job progress |
+| 6 | FalconVQA Service → Client App | Poll job progress |
 | 7 | Client App → AI Agent | Question and tagged videos |
-| 8 | AI Agent → VideoMind Service | Search and ask calls |
-| 9 | VideoMind Service → Client App | Answers, moments, clips |
+| 8 | AI Agent → FalconVQA Service | Search and ask calls |
+| 9 | FalconVQA Service → Client App | Answers, moments, clips |
 | 10 | AI Agent → Supabase Postgres | Persist conversation |
