@@ -21,7 +21,7 @@ venv/
 # Model caches these libraries create outside data/
 .paddlex/
 runs/
-*.pt
+
 
 # Logs and scratch
 *.log
