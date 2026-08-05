@@ -1,9 +1,21 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, Crosshair, ExternalLink, Film, Play } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Crosshair,
+  Download,
+  ExternalLink,
+  Film,
+  Loader2,
+  Play,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRange, formatTimestamp, toFragmentUrl } from '@/lib/core/format'
+import { clipFileName, formatRange, formatTimestamp, toFragmentUrl } from '@/lib/core/format'
+import { downloadClipCut, toClipSpan } from '@/lib/core/clip-cutter'
+import { useClipCut } from '@/hooks/use-clip-cut'
 import type { ClipItem } from '@/lib/core/types'
 
 interface ClipResultCardProps {
@@ -124,6 +136,7 @@ export function ClipResultCard({
                 <Crosshair className="size-3.5" />
               </button>
             )}
+            <ClipDownloadButton clip={clip} />
             <button
               type="button"
               onClick={() => void copyUrl()}
@@ -154,21 +167,77 @@ export function ClipResultCard({
   )
 }
 
+/** Cut this clip out of its video and save it. Reuses a cut already in hand. */
+export function ClipDownloadButton({ clip, className }: { clip: ClipItem; className?: string }) {
+  const [state, setState] = useState<'idle' | 'cutting' | 'done' | 'error'>('idle')
+
+  const save = useCallback(async () => {
+    if (state === 'cutting') return
+    setState('cutting')
+    try {
+      await downloadClipCut(toClipSpan(clip), clipFileName(clip))
+      setState('done')
+      setTimeout(() => setState('idle'), 2000)
+    } catch {
+      setState('error')
+      setTimeout(() => setState('idle'), 3000)
+    }
+  }, [clip, state])
+
+  return (
+    <button
+      type="button"
+      onClick={() => void save()}
+      disabled={state === 'cutting'}
+      title={
+        state === 'cutting'
+          ? 'Cutting this clip…'
+          : state === 'error'
+            ? 'Could not cut this clip'
+            : 'Download this clip as its own mp4'
+      }
+      className={cn(
+        'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-progress',
+        className
+      )}
+    >
+      {state === 'cutting' ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : state === 'done' ? (
+        <Check className="size-3.5 text-emerald-500" />
+      ) : state === 'error' ? (
+        <AlertTriangle className="size-3.5 text-amber-500" />
+      ) : (
+        <Download className="size-3.5" />
+      )}
+    </button>
+  )
+}
+
 /**
- * A frame from the clip, as its own thumbnail.
+ * A frame from the clip, as its own thumbnail — and, on hover, the clip itself.
  *
- * The media fragment `#t=start` is what makes this cheap: the browser range-
- * requests only the bytes around that offset and paints the frame, so a grid of
- * twenty results does not download twenty videos. Only attached once the card
- * scrolls into view, and only played (muted, looping the clip's own span) on
- * hover — a grid of simultaneously playing videos is a lot of decode for a
- * preview nobody is watching yet.
+ * Two sources, in order of what is available. At rest and while a cut is still
+ * running, this is the full video at the media fragment `#t=start`: the browser
+ * range-requests only the bytes around that offset and paints the frame, so a
+ * grid of twenty results does not download twenty videos. Once the real cut
+ * exists it takes over, and the preview is genuinely just those seconds, looping
+ * on its own rather than being fenced inside the parent file by hand.
+ *
+ * Nothing is attached before the card scrolls into view, and the cut is only
+ * started after the pointer has settled for a moment — sweeping the grid should
+ * not queue an encode per card.
  */
 export function ClipThumb({ clip, className }: { clip: ClipItem; className?: string }) {
   const containerRef = useRef<HTMLSpanElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isVisible, setIsVisible] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const [wantsCut, setWantsCut] = useState(false)
   const [hasFrame, setHasFrame] = useState(false)
+
+  const cut = useClipCut(clip, isVisible && wantsCut)
+  const cutUrl = cut.url
 
   useEffect(() => {
     const container = containerRef.current
@@ -179,54 +248,90 @@ export function ClipThumb({ clip, className }: { clip: ClipItem; className?: str
       { rootMargin: '200px' }
     )
     observer.observe(container)
-    return () => observer.disconnect()
+
+    const enter = () => setIsHovered(true)
+    const leave = () => setIsHovered(false)
+    container.addEventListener('pointerenter', enter)
+    container.addEventListener('pointerleave', leave)
+
+    return () => {
+      observer.disconnect()
+      container.removeEventListener('pointerenter', enter)
+      container.removeEventListener('pointerleave', leave)
+    }
   }, [])
 
-  // Hover preview: loop the clip's own span rather than playing on into the
-  // next scene, which is what a thumbnail of *this moment* has to mean.
   useEffect(() => {
-    const container = containerRef.current
-    const video = videoRef.current
-    if (!isVisible || !container || !video) return
+    if (!isHovered) {
+      setWantsCut(false)
+      return
+    }
+    const timer = setTimeout(() => setWantsCut(true), 300)
+    return () => clearTimeout(timer)
+  }, [isHovered])
 
+  useEffect(() => {
+    const video = videoRef.current
+    if (!isVisible || !video) return
+
+    // The cut is the clip, so it needs no fencing — `loop` is enough.
+    if (cutUrl) {
+      if (isHovered) {
+        void video.play().catch(() => {})
+      } else {
+        video.pause()
+        video.currentTime = 0
+      }
+      return
+    }
+
+    if (!isHovered) {
+      video.pause()
+      video.currentTime = clip.start
+      return
+    }
+
+    // Full-file fallback: hold the playhead inside the clip's own span rather
+    // than letting it play on into the next scene.
     const loop = () => {
       if (video.currentTime >= clip.end || video.currentTime < clip.start - 0.25) {
         video.currentTime = clip.start
       }
     }
-    const enter = () => {
-      video.currentTime = clip.start
-      video.addEventListener('timeupdate', loop)
-      void video.play().catch(() => {})
-    }
-    const leave = () => {
-      video.pause()
-      video.removeEventListener('timeupdate', loop)
-      video.currentTime = clip.start
-    }
+    video.currentTime = clip.start
+    video.addEventListener('timeupdate', loop)
+    void video.play().catch(() => {})
 
-    container.addEventListener('pointerenter', enter)
-    container.addEventListener('pointerleave', leave)
-    return () => {
-      container.removeEventListener('pointerenter', enter)
-      container.removeEventListener('pointerleave', leave)
-      video.removeEventListener('timeupdate', loop)
-    }
-  }, [isVisible, clip.start, clip.end])
+    return () => video.removeEventListener('timeupdate', loop)
+  }, [isVisible, isHovered, cutUrl, clip.start, clip.end])
+
+  const isCutting = cut.status === 'cutting' || cut.status === 'queued'
 
   return (
     <span ref={containerRef} className={cn('block size-full', className)}>
       {isVisible && (
         <video
+          // Remounted rather than re-sourced when the cut arrives, so the
+          // element does not carry the parent file's buffered state across.
+          key={cutUrl ?? 'source'}
           ref={videoRef}
-          src={`${clip.url.split('#')[0]}#t=${clip.start.toFixed(2)}`}
+          src={cutUrl ?? `${clip.url.split('#')[0]}#t=${clip.start.toFixed(2)}`}
           muted
           playsInline
           preload="metadata"
+          loop={Boolean(cutUrl)}
           poster={clip.poster_url ?? undefined}
           onLoadedData={() => setHasFrame(true)}
           className="size-full object-cover"
         />
+      )}
+      {isCutting && (
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-white/25">
+          <span
+            className="block h-full bg-white/90 transition-[width] duration-200"
+            style={{ width: `${Math.round(cut.progress * 100)}%` }}
+          />
+        </span>
       )}
       {!hasFrame && !clip.poster_url && (
         <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-muted/40">

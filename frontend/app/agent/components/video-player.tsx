@@ -19,12 +19,12 @@ export interface VideoPlayerHandle {
 }
 
 interface VideoPlayerProps {
-  /** The whole video's mp4. There is no per-clip source — clips are ranges of this. */
+  /** An mp4 — either a whole video, or a `blob:` URL for a clip cut out of one. */
   src: string | null | undefined
   poster?: string | null
   /**
-   * Play only this span. The player seeks here on load and stops (or loops) at
-   * the end, which is what replaced being handed a pre-cut stream per clip.
+   * Play only this span of `src`. The player seeks here on load and stops (or
+   * loops) at the end. Leave unset when `src` is already just the clip.
    */
   range?: [number, number] | null
   loopRange?: boolean
@@ -34,7 +34,7 @@ interface VideoPlayerProps {
   onTimeUpdate?: (seconds: number) => void
   onDurationChange?: (seconds: number) => void
   onPlayingChange?: (isPlaying: boolean) => void
-  /** Fires when a bounded range plays through to its end. */
+  /** Fires when a bounded range — or an unbounded source — plays to its end. */
   onRangeEnd?: () => void
 }
 
@@ -153,7 +153,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const end = range?.[1]
     useEffect(() => {
       const video = videoRef.current
-      if (!video || start === undefined || end === undefined) return
+      if (!video) return
+
+      // A source that is already only the clip — a cut blob — needs no guard:
+      // its natural end *is* the range end, so `ended` carries the same meaning.
+      if (start === undefined || end === undefined) {
+        const handleEnded = () => onRangeEnd?.()
+        video.addEventListener('ended', handleEnded)
+        return () => video.removeEventListener('ended', handleEnded)
+      }
 
       const enterRange = () => {
         // Only pull the playhead in when it is outside the clip, so a user who

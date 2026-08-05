@@ -2,6 +2,7 @@
 
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import {
+  AlertTriangle,
   ArrowDownWideNarrow,
   Clock,
   Crosshair,
@@ -9,6 +10,7 @@ import {
   LayoutGrid,
   ListVideo,
   Rows3,
+  Scissors,
   Search,
   X,
 } from 'lucide-react'
@@ -16,9 +18,11 @@ import { cn } from '@/lib/utils'
 import { formatRange, formatTimestamp } from '@/lib/core/format'
 import { VideoPlayer, type VideoPlayerHandle } from '@/app/agent/components/video-player'
 import {
+  ClipDownloadButton,
   ClipResultCard,
   ClipThumb,
 } from '@/app/agent/components/artifact-panels/clip-result-card'
+import { useClipCut } from '@/hooks/use-clip-cut'
 import { useAgentStore } from '@/app/agent/store/agent-store'
 import type { ClipItem } from '@/lib/core/types'
 
@@ -72,6 +76,15 @@ export function ClipReelPanel({ clips }: ClipReelPanelProps) {
 
   const active = clips[activeIndex] ?? clips[0]
 
+  // The selected clip is cut for real before it plays. While playing through
+  // the reel the next one is cut in the background, so the hand-off between
+  // clips is not a stall per clip.
+  const cut = useClipCut(active)
+  const upcoming = isPlayingAll ? clips[activeIndex + 1] : undefined
+  useClipCut(upcoming, Boolean(upcoming))
+
+  const cutUnavailable = !cut.supported || cut.status === 'error'
+
   const select = useCallback((index: number) => {
     setActiveIndex(index)
     setIsPlayingAll(false)
@@ -110,17 +123,53 @@ export function ClipReelPanel({ clips }: ClipReelPanelProps) {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Player — stays put while the results below scroll */}
       <div className="shrink-0 border-b bg-muted/20 p-4">
-        <VideoPlayer
-          ref={playerRef}
-          // Keyed on the source only: moving between clips of the same video is
-          // a seek, not a reload.
-          key={active?.url}
-          src={active?.url}
-          poster={active?.poster_url}
-          range={active ? [active.start, active.end] : null}
-          onRangeEnd={handleRangeEnd}
-          autoPlay
-        />
+        {cut.url ? (
+          // The real thing: an mp4 of just this moment, so the scrubber spans
+          // the clip and there is nothing outside it to scrub into.
+          <VideoPlayer
+            ref={playerRef}
+            key={cut.url}
+            src={cut.url}
+            poster={active?.poster_url}
+            onRangeEnd={handleRangeEnd}
+            autoPlay
+          />
+        ) : cutUnavailable ? (
+          // No WebCodecs, or the cut failed: fall back to fencing the playhead
+          // inside the clip's span of the whole file, which always works.
+          <VideoPlayer
+            ref={playerRef}
+            key={active?.url}
+            src={active?.url}
+            poster={active?.poster_url}
+            range={active ? [active.start, active.end] : null}
+            onRangeEnd={handleRangeEnd}
+            autoPlay
+          />
+        ) : (
+          <CuttingPlaceholder poster={active?.poster_url} progress={cut.progress} />
+        )}
+
+        {cutUnavailable && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <AlertTriangle className="size-3 shrink-0 text-amber-500" />
+            <span>
+              {cut.supported
+                ? 'This clip could not be cut, so it is playing as a range of the full video.'
+                : 'This browser cannot cut video, so clips play as ranges of the full video.'}
+            </span>
+            {cut.supported && (
+              <button
+                type="button"
+                onClick={cut.retry}
+                className="shrink-0 underline underline-offset-2 hover:text-foreground"
+              >
+                Try again
+              </button>
+            )}
+          </p>
+        )}
+
         <div className="mt-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
@@ -246,6 +295,40 @@ export function ClipReelPanel({ clips }: ClipReelPanelProps) {
   )
 }
 
+/**
+ * Stands in for the player while the clip is being cut out of its video.
+ *
+ * Deliberately not the full video playing the range in the meantime: swapping
+ * the source out from under someone a second into watching is worse than a
+ * short, honest wait.
+ */
+function CuttingPlaceholder({
+  poster,
+  progress,
+}: {
+  poster?: string | null
+  progress: number
+}) {
+  return (
+    <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-black">
+      {poster && (
+        // eslint-disable-next-line @next/next/no-img-element -- same source the player uses for its poster
+        <img src={poster} alt="" className="absolute inset-0 size-full object-cover opacity-30" />
+      )}
+      <div className="relative flex w-2/3 max-w-64 flex-col items-center gap-2 text-white">
+        <Scissors className="size-5 animate-pulse" />
+        <p className="text-xs font-medium">Cutting this clip…</p>
+        <div className="h-1 w-full overflow-hidden rounded-full bg-white/20">
+          <div
+            className="h-full rounded-full bg-white transition-[width] duration-200"
+            style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Compact row for the list view — same result, thumbnail shrunk to a strip. */
 function ClipResultRow({
   clip,
@@ -301,14 +384,17 @@ function ClipResultRow({
           </p>
         </button>
 
-        <button
-          type="button"
-          onClick={onLocate}
-          title="Show in the timeline"
-          className="mt-1 shrink-0 rounded p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-        >
-          <Crosshair className="size-3.5" />
-        </button>
+        <div className="mt-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={onLocate}
+            title="Show in the timeline"
+            className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Crosshair className="size-3.5" />
+          </button>
+          <ClipDownloadButton clip={clip} className="p-1.5" />
+        </div>
       </div>
     </li>
   )

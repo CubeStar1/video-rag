@@ -39,6 +39,25 @@ export function toFragmentUrl(
   return `${base}#t=${range}`
 }
 
+/**
+ * A filename for a cut clip: its caption, then the span it came from, so a
+ * folder of downloads still says which moment of which video each one is.
+ */
+export function clipFileName(
+  clip: { label?: string; text?: string; video_title?: string; start: number; end: number },
+  extension = 'mp4'
+): string {
+  const stamp = (seconds: number) => formatTimestamp(seconds).replace(/:/g, '-')
+  const slug = (clip.label || clip.text || clip.video_title || 'clip')
+    .slice(0, 60)
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .toLowerCase()
+
+  return `${slug || 'clip'}_${stamp(clip.start)}-${stamp(clip.end)}.${extension}`
+}
+
 /** Bytes → `1.4 GB`. Only used where a size is genuinely informative. */
 export function formatBytes(bytes: number | null | undefined): string {
   if (!bytes) return '—'
