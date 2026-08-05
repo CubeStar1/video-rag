@@ -141,14 +141,14 @@ function SummarySection({
 
   return (
     <Section
-      title={hideProse ? 'Summary detail' : 'Summary'}
+      title="Summary"
       icon={<FileText className="size-4" />}
       subtitle={summary.based_on.length ? `from ${summary.based_on.join(', ')}` : undefined}
     >
-      {!hideProse && <p className="text-sm leading-relaxed">{summary.summary}</p>}
+      <p className="text-sm leading-relaxed">{summary.summary}</p>
 
       {summary.key_points.length > 0 && (
-        <div className={cn(!hideProse && 'mt-4')}>
+        <div className="mt-4">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Key points
           </div>
@@ -163,7 +163,7 @@ function SummarySection({
         </div>
       )}
 
-      {!hideProse && summary.topics.length > 0 && (
+      {summary.topics.length > 0 && (
         <div className="mt-4">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Topics

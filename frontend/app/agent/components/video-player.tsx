@@ -65,6 +65,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const videoRef = useRef<HTMLVideoElement>(null)
     const [failed, setFailed] = useState(false)
 
+    /**
+     * The skin is client-only.
+     *
+     * Its seek slider labels itself with a formatted duration, which the server
+     * renders as `" of "` and the browser as `"0 seconds of 0 seconds"` — a
+     * hydration mismatch React refuses to patch. Nothing here can render
+     * meaningfully server-side anyway (there is no media element to read), so
+     * the player is mounted after hydration and a poster stands in until then.
+     */
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => setMounted(true), [])
+
     useEffect(() => setFailed(false), [src])
 
     useImperativeHandle(ref, () => ({
@@ -180,6 +192,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           )}
         >
           No video available
+        </div>
+      )
+    }
+
+    if (!mounted) {
+      return (
+        <div className={cn('relative aspect-video overflow-hidden bg-black', className)}>
+          {poster && (
+            // eslint-disable-next-line @next/next/no-img-element -- same source the skin uses for its poster
+            <img src={poster} alt="" className="size-full object-cover opacity-80" />
+          )}
         </div>
       )
     }
