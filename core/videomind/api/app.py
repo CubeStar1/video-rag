@@ -12,8 +12,8 @@ warnings.filterwarnings("ignore")
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from .. import aggregators, analyzers, storage
@@ -27,6 +27,26 @@ app = FastAPI(
     version="0.1.0",
     description="Video RAG: chunk, analyse, aggregate, search and ask.",
 )
+
+# Shared secret, checked on every route that reads or writes a video. Unset
+# means open, which is the right default for a machine-local dev server and the
+# wrong one for anything reachable: without it, whoever can open this port has
+# the whole corpus. Not an authorisation model - there are no users here - just
+# the boundary that stops the port from being one.
+API_TOKEN = os.environ.get("VIDEOMIND_API_TOKEN", "").strip()
+
+# Liveness and docs stay open so a deployment can be checked without the secret,
+# and "/" is the UI, which has no way to send a header.
+_OPEN_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    if API_TOKEN and request.url.path not in _OPEN_PATHS:
+        if request.headers.get("x-core-token") != API_TOKEN:
+            return JSONResponse({"detail": "Invalid or missing X-Core-Token"}, status_code=401)
+    return await call_next(request)
+
 
 # The API is the product; the UI is one optional client of it.
 if ui.enabled():
@@ -143,6 +163,21 @@ def get_video(video_id: str):
     if video is None:
         raise HTTPException(404, f"No such video {video_id!r}")
     return video
+
+
+@app.delete("/videos/{video_id}")
+def delete_video(video_id: str):
+    """Remove a video's vectors, record, bucket objects and cached file.
+
+    Note that `video_id` is a content hash, so two callers who ingested the
+    same bytes are referring to the *same* video here. Whoever owns the
+    application-side rows has to decide that nothing else still points at it
+    before calling this - core has no notion of who else is interested.
+    """
+    result = core.delete_video(video_id)
+    if result is None:
+        raise HTTPException(404, f"No such video {video_id!r}")
+    return result
 
 
 @app.get("/videos/{video_id}/chunks")

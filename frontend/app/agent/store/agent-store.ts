@@ -18,9 +18,9 @@ interface AgentStoreState {
   setActiveVideo: (videoId: string | undefined) => void
   /**
    * Move the studio player to `seconds`. Callers outside the studio (chat tool
-   * results) only know the VideoDB id, so the studio resolves it to a row itself.
+   * results) only know core's video id, so the studio resolves it to a row itself.
    */
-  seekStudio: (seconds: number, videodbVideoId?: string) => void
+  seekStudio: (seconds: number, coreVideoId?: string) => void
 }
 
 export const useAgentStore = create<AgentStoreState>((set) => ({
@@ -97,13 +97,13 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     }))
   },
 
-  seekStudio: (seconds: number, videodbVideoId?: string) => {
+  seekStudio: (seconds: number, coreVideoId?: string) => {
     set((state) => ({
       studioState: {
         ...state.studioState,
         isOpen: true,
         // The nonce makes a repeat seek to the same second a distinct request.
-        seekRequest: { seconds, videodbVideoId, nonce: Date.now() },
+        seekRequest: { seconds, coreVideoId, nonce: Date.now() },
       },
     }))
   },

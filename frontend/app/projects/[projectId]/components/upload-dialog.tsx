@@ -7,8 +7,6 @@ import {
   Link2,
   Loader2,
   Plus,
-  Scissors,
-  Timer,
   X,
   XCircle,
 } from 'lucide-react'
@@ -27,12 +25,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { uploadProjectVideo } from '@/lib/supabase/upload-project-video'
 import {
-  normalizeSegmentation,
-  SEGMENTATION_DEFAULTS,
-  SEGMENTATION_LIMITS,
-  SEGMENTATION_OPTIONS,
-} from '@/lib/videodb/segmentation'
-import type { SegmentationConfig } from '@/lib/videodb/types'
+  ANALYZER_CATALOGUE,
+  CHUNK_DEFAULTS,
+  CHUNK_LIMITS,
+  EXCLUSIVE_GROUPS,
+  MODE_OPTIONS,
+  normalizeChunkConfig,
+  PRESET_OPTIONS,
+} from '@/lib/core/chunking'
+import type { ChunkConfig } from '@/lib/core/types'
 
 type JobState = 'uploading' | 'registering' | 'done' | 'error'
 
@@ -64,9 +65,9 @@ export function UploadDialog({
   const [isWorking, setIsWorking] = useState(false)
   const [tab, setTab] = useState('upload')
   const [isDragging, setIsDragging] = useState(false)
-  // Every key is kept even when its type is inactive, so toggling between shot and
-  // time doesn't lose the numbers the user already dialled in.
-  const [segmentation, setSegmentation] = useState({ ...SEGMENTATION_DEFAULTS })
+  // Every key is kept even when its mode is inactive, so switching between
+  // preset, weights and interval doesn't lose numbers already dialled in.
+  const [config, setConfig] = useState<ChunkConfig>({ ...CHUNK_DEFAULTS })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const reset = () => {
@@ -74,7 +75,7 @@ export function UploadDialog({
     setUrls([''])
     setJobs([])
     setTab('upload')
-    setSegmentation({ ...SEGMENTATION_DEFAULTS })
+    setConfig({ ...CHUNK_DEFAULTS })
   }
 
   const updateJob = (id: string, patch: Partial<Job>) => {
@@ -86,7 +87,7 @@ export function UploadDialog({
     sourceUrl: string
     storagePath?: string
     sourceType: 'upload' | 'url'
-    segmentation: SegmentationConfig
+    config: ChunkConfig
   }) => {
     const response = await fetch('/api/videos', {
       method: 'POST',
@@ -137,8 +138,8 @@ export function UploadDialog({
     ]
     setJobs(initialJobs)
 
-    // Drops the keys that don't apply to the chosen type and clamps the rest.
-    const segmentationConfig = normalizeSegmentation(segmentation)
+    // Drops the keys that don't apply to the chosen mode and clamps the rest.
+    const ingestConfig = normalizeChunkConfig(config)
 
     let succeeded = 0
 
@@ -146,15 +147,15 @@ export function UploadDialog({
       const id = `file-${file.name}-${file.size}`
       try {
         const uploaded = await uploadProjectVideo(projectId, file)
-        updateJob(id, { state: 'registering', message: 'Sending to VideoDB…' })
+        updateJob(id, { state: 'registering', message: 'Handing off for analysis…' })
         await registerVideo({
           title: uploaded.title,
           sourceUrl: uploaded.publicUrl,
           storagePath: uploaded.storagePath,
           sourceType: 'upload',
-          segmentation: segmentationConfig,
+          config: ingestConfig,
         })
-        updateJob(id, { state: 'done', message: 'Indexing started' })
+        updateJob(id, { state: 'done', message: 'Queued for analysis' })
         succeeded += 1
       } catch (error: any) {
         updateJob(id, { state: 'error', message: error.message })
@@ -168,9 +169,9 @@ export function UploadDialog({
           title: deriveTitle(url),
           sourceUrl: url,
           sourceType: 'url',
-          segmentation: segmentationConfig,
+          config: ingestConfig,
         })
-        updateJob(id, { state: 'done', message: 'Indexing started' })
+        updateJob(id, { state: 'done', message: 'Queued for analysis' })
         succeeded += 1
       } catch (error: any) {
         updateJob(id, { state: 'error', message: error.message })
@@ -182,7 +183,7 @@ export function UploadDialog({
 
     if (succeeded > 0) {
       toast.success(
-        `${succeeded} video${succeeded === 1 ? '' : 's'} added — indexing runs in the background`
+        `${succeeded} video${succeeded === 1 ? '' : 's'} added — analysis runs in the background`
       )
       setFiles([])
       setUrls([''])
@@ -275,7 +276,8 @@ export function UploadDialog({
               <div>
                 <p className="text-sm font-medium">Or add file URLs</p>
                 <p className="text-xs text-muted-foreground">
-                  Direct video links or YouTube URLs — ingested by VideoDB directly.
+                  Direct links to a video file. The analyzer downloads the bytes itself, so
+                  a page that serves HTML — a YouTube watch link, a share page — will fail.
                 </p>
               </div>
               {urls.map((url, index) => (
@@ -315,82 +317,204 @@ export function UploadDialog({
 
             <div className="space-y-3">
               <div>
-                <p className="text-sm font-medium">How should we split these videos?</p>
+                <p className="text-sm font-medium">What should we analyse?</p>
                 <p className="text-xs text-muted-foreground">
-                  Scenes are the time ranges the visual analyzer describes and indexes.
-                  Match this to the footage you&apos;re adding.
+                  Each analyzer is a separate pass and only what you pick here can be asked
+                  about later. They differ a lot in cost — transcription is free, the
+                  vision passes bill per chunk.
                 </p>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                {SEGMENTATION_OPTIONS.map((option) => {
-                  const Icon = option.type === 'time' ? Timer : Scissors
-                  const isActive = segmentation.type === option.type
+              <div className="space-y-1.5">
+                {ANALYZER_CATALOGUE.map((analyzer) => {
+                  const isActive = config.analyzers.includes(analyzer.id)
+                  // Selecting one member of an exclusive group deselects the other,
+                  // rather than letting the user submit a pair core would reject.
+                  const blockedBy = EXCLUSIVE_GROUPS.find(
+                    (group) => group.includes(analyzer.id) && !isActive
+                  )?.filter((id) => id !== analyzer.id && config.analyzers.includes(id))
+
                   return (
                     <button
-                      key={option.type}
+                      key={analyzer.id}
                       type="button"
                       onClick={() =>
-                        setSegmentation((current) => ({ ...current, type: option.type }))
+                        setConfig((current) => {
+                          const without = current.analyzers.filter(
+                            (id) =>
+                              id !== analyzer.id &&
+                              !EXCLUSIVE_GROUPS.some(
+                                (group) => group.includes(analyzer.id) && group.includes(id)
+                              )
+                          )
+                          return {
+                            ...current,
+                            analyzers: isActive ? without : [...without, analyzer.id],
+                          }
+                        })
                       }
                       className={cn(
-                        'rounded-lg border p-3 text-left transition-colors',
+                        'flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors',
                         isActive
                           ? 'border-primary bg-primary/5'
                           : 'hover:border-muted-foreground/40'
                       )}
                     >
-                      <span className="flex items-center gap-2 text-sm font-medium">
-                        <Icon
-                          className={cn(
-                            'size-4',
-                            isActive ? 'text-primary' : 'text-muted-foreground'
+                      <span
+                        className={cn(
+                          'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border',
+                          isActive
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-input'
+                        )}
+                      >
+                        {isActive && <CheckCircle2 className="size-3" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                          {analyzer.label}
+                          {analyzer.billed && (
+                            <span className="rounded bg-amber-500/15 px-1 py-px text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                              billed
+                            </span>
                           )}
-                        />
-                        {option.label}
-                      </span>
-                      <span className="mt-1.5 block text-xs text-muted-foreground">
-                        {option.hint}
-                      </span>
-                      <span className="mt-1 block text-[11px] leading-snug text-muted-foreground/70">
-                        {option.bestFor}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {analyzer.description}
+                          {blockedBy?.length
+                            ? ` Replaces ${blockedBy.join(', ')}.`
+                            : ''}
+                        </span>
                       </span>
                     </button>
                   )
                 })}
               </div>
 
+              {config.analyzers.length === 0 && (
+                <p className="text-xs text-red-500">Pick at least one analyzer.</p>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">How should we split these videos?</p>
+                <p className="text-xs text-muted-foreground">
+                  Chunks are the time ranges every analyzer runs on. Boundaries are detected
+                  from four signals — speaker changes, silences, hard cuts and topic
+                  shifts — and the mode decides how they are weighed.
+                </p>
+              </div>
+
+              <div className="flex gap-1.5 rounded-lg border p-1">
+                {MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.mode}
+                    type="button"
+                    onClick={() => setConfig((current) => ({ ...current, mode: option.mode }))}
+                    title={option.hint}
+                    className={cn(
+                      'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                      config.mode === option.mode
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-4 rounded-lg border bg-muted/20 px-3 py-3">
-                {segmentation.type === 'time' ? (
+                {config.mode === 'preset' && (
+                  <div className="grid gap-2">
+                    {PRESET_OPTIONS.map((option) => {
+                      const isActive = config.preset === option.type
+                      return (
+                        <button
+                          key={option.type}
+                          type="button"
+                          onClick={() =>
+                            setConfig((current) => ({ ...current, preset: option.type }))
+                          }
+                          className={cn(
+                            'rounded-lg border bg-background p-2.5 text-left transition-colors',
+                            isActive
+                              ? 'border-primary bg-primary/5'
+                              : 'hover:border-muted-foreground/40'
+                          )}
+                        >
+                          <span className="text-sm font-medium">{option.label}</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {option.hint}
+                          </span>
+                          <span className="mt-1 block text-[11px] leading-snug text-muted-foreground/70">
+                            {option.bestFor}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {config.mode === 'weights' && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Only the ratios matter, and weight given to a signal the footage does
+                      not contain is redistributed — so a silent video is unaffected by the
+                      speaker weight.
+                    </p>
+                    {(['speaker', 'silence', 'cut', 'semantic'] as const).map((signal) => (
+                      <SettingSlider
+                        key={signal}
+                        label={SIGNAL_LABELS[signal]}
+                        hint={SIGNAL_HINTS[signal]}
+                        value={config.weights?.[signal] ?? 0}
+                        step={0.1}
+                        format={(value) => value.toFixed(1)}
+                        {...CHUNK_LIMITS.weight}
+                        onChange={(value) =>
+                          setConfig((current) => ({
+                            ...current,
+                            weights: { ...current.weights, [signal]: value },
+                          }))
+                        }
+                      />
+                    ))}
+                  </>
+                )}
+
+                {config.mode === 'interval' && (
                   <SettingSlider
-                    label="Scene length"
-                    hint="Shorter scenes give finer search results but cost more to analyze."
-                    value={segmentation.seconds}
+                    label="Chunk length"
+                    hint="Exact spans, no detection. Shorter chunks give finer search results but cost more to analyse."
+                    value={config.interval ?? 20}
                     format={(value) => `${value}s`}
-                    {...SEGMENTATION_LIMITS.seconds}
-                    onChange={(seconds) =>
-                      setSegmentation((current) => ({ ...current, seconds }))
-                    }
+                    {...CHUNK_LIMITS.interval}
+                    onChange={(interval) => setConfig((current) => ({ ...current, interval }))}
                   />
-                ) : (
+                )}
+
+                {config.mode !== 'interval' && (
                   <>
                     <SettingSlider
-                      label="Cut sensitivity"
-                      hint="Higher values detect fewer cuts, so scenes come out longer."
-                      value={segmentation.threshold}
-                      {...SEGMENTATION_LIMITS.threshold}
-                      onChange={(threshold) =>
-                        setSegmentation((current) => ({ ...current, threshold }))
+                      label="Shortest chunk"
+                      hint="Stops a flurry of quick cuts from each becoming its own chunk."
+                      value={config.min_duration ?? 5}
+                      format={(value) => `${value}s`}
+                      {...CHUNK_LIMITS.min_duration}
+                      onChange={(min_duration) =>
+                        setConfig((current) => ({ ...current, min_duration }))
                       }
                     />
                     <SettingSlider
-                      label="Minimum scene length"
-                      hint="Keeps quick cuts from each becoming their own scene."
-                      value={segmentation.min_scene_len}
+                      label="Longest chunk"
+                      hint="Forces a split in long stretches with no detected boundary."
+                      value={config.max_duration ?? 20}
                       format={(value) => `${value}s`}
-                      {...SEGMENTATION_LIMITS.min_scene_len}
-                      onChange={(min_scene_len) =>
-                        setSegmentation((current) => ({ ...current, min_scene_len }))
+                      {...CHUNK_LIMITS.max_duration}
+                      onChange={(max_duration) =>
+                        setConfig((current) => ({ ...current, max_duration }))
                       }
                     />
                   </>
@@ -451,7 +575,10 @@ export function UploadDialog({
           >
             {jobs.some((job) => job.state === 'done') ? 'Close' : 'Cancel'}
           </Button>
-          <Button onClick={handleSubmit} disabled={isWorking}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isWorking || config.analyzers.length === 0}
+          >
             {isWorking ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -467,12 +594,28 @@ export function UploadDialog({
   )
 }
 
+/** What each boundary signal actually detects, in the user's terms. */
+const SIGNAL_LABELS = {
+  speaker: 'Speaker changes',
+  silence: 'Silences',
+  cut: 'Hard cuts',
+  semantic: 'Topic shifts',
+} as const
+
+const SIGNAL_HINTS = {
+  speaker: 'Split when a different person starts talking.',
+  silence: 'Split on pauses in speech.',
+  cut: 'Split on the video’s own shot changes.',
+  semantic: 'Split when the subject of the footage changes.',
+} as const
+
 function SettingSlider({
   label,
   hint,
   value,
   min,
   max,
+  step = 1,
   onChange,
   format = String,
 }: {
@@ -481,6 +624,7 @@ function SettingSlider({
   value: number
   min: number
   max: number
+  step?: number
   onChange: (value: number) => void
   format?: (value: number) => string
 }) {
@@ -496,7 +640,7 @@ function SettingSlider({
         value={[value]}
         min={min}
         max={max}
-        step={1}
+        step={step}
         onValueChange={([next]) => onChange(next)}
       />
       <p className="text-[11px] leading-snug text-muted-foreground/70">{hint}</p>
@@ -507,9 +651,6 @@ function SettingSlider({
 function deriveTitle(url: string): string {
   try {
     const parsed = new URL(url)
-    if (parsed.hostname.includes('youtu')) {
-      return `YouTube — ${parsed.searchParams.get('v') || parsed.pathname.replace('/', '')}`
-    }
     const name = parsed.pathname.split('/').filter(Boolean).pop()
     return name ? decodeURIComponent(name.replace(/\.[^.]+$/, '')) : parsed.hostname
   } catch {

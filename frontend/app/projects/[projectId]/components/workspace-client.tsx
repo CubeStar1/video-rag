@@ -12,9 +12,9 @@ import { ModeToggle } from '@/components/global/theme-switcher'
 import { VideoPlayer } from '@/app/agent/components/video-player'
 import { VideoPicker, VideoChips } from '@/app/agent/components/video-picker'
 import { useProjectVideos, useVideoMutations } from '@/hooks/use-project-videos'
-import { formatDuration } from '@/lib/videodb/format'
+import { formatDuration } from '@/lib/core/format'
 import type { Project } from '@/app/agent/types'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import type { ProjectVideo } from '@/lib/core/types'
 import { MediaGrid } from './media-grid'
 import { PromptSuggestions } from './prompt-suggestions'
 import { UploadDialog } from './upload-dialog'
@@ -89,7 +89,7 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
       const scope =
         selectedVideoIds.length > 0
           ? selectedVideoIds
-          : readyVideos.map((video) => video.videodb_video_id as string)
+          : readyVideos.map((video) => video.core_video_id as string)
       if (scope.length > 0) {
         params.set('videos', scope.join(','))
       }
@@ -218,7 +218,7 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
           <DialogHeader>
             <DialogTitle className="truncate pr-6">{preview?.title}</DialogTitle>
           </DialogHeader>
-          <VideoPlayer streamUrl={preview?.stream_url} poster={preview?.thumbnail_url} autoPlay />
+          <VideoPlayer src={preview?.playback_url} poster={preview?.poster_url} autoPlay />
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span>{formatDuration(preview?.duration)}</span>
             <span>·</span>

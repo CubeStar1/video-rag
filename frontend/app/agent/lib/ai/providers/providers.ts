@@ -39,6 +39,7 @@ export function createMyProvider(apiKeys: {
     languageModels: {
       'gpt-4o-mini': openai('gpt-4o-mini'),
       'gpt-4.1-mini': openai('gpt-4.1-mini'),
+      'gpt-5.4-mini': openai('gpt-5.4-mini'),
       'gemini-2.5-flash': google('gemini-2.5-flash'),
       'llama-3.3-70b-versatile': groq('llama-3.3-70b-versatile'),
       'openai/gpt-oss-120b': groq('openai/gpt-oss-120b'),

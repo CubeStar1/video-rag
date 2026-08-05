@@ -1,5 +1,5 @@
 import { showArtifactTool } from './tools/show-artifact';
-import { createVideoTools } from './tools/videodb';
+import { createVideoTools } from './tools/core';
 import {
   streamText,
   UIMessage,
@@ -75,8 +75,8 @@ export async function POST(req: Request) {
     if (projectID) {
       const supabase = await createSupabaseServer();
       const { data } = await supabase
-        .from('videos')
-        .select('videodb_video_id,title,duration,status,error')
+        .from('video_core')
+        .select('core_video_id,title,duration,status,analyzers,aggregates,error')
         .eq('project_id', projectID)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });

@@ -15,8 +15,8 @@ import {
   FileText,
   Library,
   MessageCircleQuestion,
-  Scissors,
   Search,
+  Users,
   SlidersHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -24,9 +24,10 @@ import { Shimmer } from '@/components/ai-elements/shimmer'
 import { ShowArtifactResult, ShowArtifactAutoOpen } from './show-artifact-result'
 import { ShowClipsResult, ShowClipsAutoOpen } from './show-clips-result'
 import {
-  VideoAggregateResult,
   VideoAskResult,
-  VideoClipResult,
+  VideoChunksResult,
+  VideoEntitiesResult,
+  VideoInsightResult,
   VideoListResult,
   VideoSearchResult,
   VideoTranscriptResult,
@@ -57,40 +58,35 @@ const STATIC_TOOLS: Record<
     icon: Library,
     color: 'text-sky-500',
   },
-  search_video_moments: {
+  search_moments: {
     displayName: 'Search Moments',
     icon: Search,
     color: 'text-sky-500',
-  },
-  semantic_search_video: {
-    displayName: 'Semantic Search',
-    icon: Search,
-    color: 'text-indigo-500',
   },
   ask_video: {
     displayName: 'Ask Video',
     icon: MessageCircleQuestion,
     color: 'text-emerald-500',
   },
+  read_chunks: {
+    displayName: 'Read Moments',
+    icon: SlidersHorizontal,
+    color: 'text-violet-500',
+  },
   get_video_transcript: {
     displayName: 'Get Transcript',
     icon: FileText,
     color: 'text-teal-500',
   },
-  query_video_index: {
-    displayName: 'Filter Moments',
-    icon: SlidersHorizontal,
-    color: 'text-violet-500',
-  },
-  aggregate_video_index: {
-    displayName: 'Count & Group',
+  get_video_insights: {
+    displayName: 'Video Insights',
     icon: BarChart3,
     color: 'text-violet-500',
   },
-  create_video_clip: {
-    displayName: 'Create Clip',
-    icon: Scissors,
-    color: 'text-rose-500',
+  get_video_entities: {
+    displayName: 'People in Video',
+    icon: Users,
+    color: 'text-indigo-500',
   },
 }
 
@@ -146,19 +142,18 @@ function StaticToolDisplayInternal({ part }: StaticToolDisplayProps) {
         return <ShowClipsResult args={args} state={state} />
       case 'list_project_videos':
         return <VideoListResult args={args} output={output} />
-      case 'search_video_moments':
-      case 'semantic_search_video':
+      case 'search_moments':
         return <VideoSearchResult args={args} output={output} />
       case 'ask_video':
         return <VideoAskResult args={args} output={output} />
       case 'get_video_transcript':
         return <VideoTranscriptResult args={args} output={output} />
-      case 'query_video_index':
-        return <VideoSearchResult args={args} output={output} />
-      case 'aggregate_video_index':
-        return <VideoAggregateResult args={args} output={output} />
-      case 'create_video_clip':
-        return <VideoClipResult args={args} output={output} />
+      case 'read_chunks':
+        return <VideoChunksResult args={args} output={output} />
+      case 'get_video_insights':
+        return <VideoInsightResult args={args} output={output} />
+      case 'get_video_entities':
+        return <VideoEntitiesResult args={args} output={output} />
       default:
         return null
     }

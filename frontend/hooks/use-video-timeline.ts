@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import type { VideoTimeline } from '@/lib/videodb/types'
+import type { VideoTimeline } from '@/lib/core/types'
 
 export const videoTimelineKey = (videoId: string) => ['video-timeline', videoId]
 
@@ -12,8 +12,9 @@ async function fetchTimeline(videoId: string): Promise<VideoTimeline> {
 }
 
 /**
- * Scenes and transcript for one video. Indexing is slow, so an empty result is
- * retried on a slow poll rather than cached as "this video has no scenes".
+ * Scenes, transcript, chapters and events for one video. Analysis is slow, so an
+ * empty result is retried on a slow poll rather than cached as "this video has
+ * no scenes".
  */
 export function useVideoTimeline(videoId: string | undefined) {
   const query = useQuery({
@@ -34,5 +35,7 @@ export function useVideoTimeline(videoId: string | undefined) {
     timeline: query.data,
     scenes: query.data?.scenes ?? [],
     transcript: query.data?.transcript ?? [],
+    chapters: query.data?.chapters ?? [],
+    events: query.data?.events ?? [],
   }
 }

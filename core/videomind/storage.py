@@ -142,6 +142,23 @@ def _upload(local_path: Path, storage_path: str, content_type: str) -> None:
         raise StorageError(f"Upload to {BUCKET}/{storage_path} failed: {exc}") from exc
 
 
+def put_object(storage_path: str, data: bytes, content_type: str) -> str:
+    """Upload bytes already in memory and return their public URL.
+
+    `_upload` streams a file and skips objects that already exist, which is
+    right for video - re-ingesting the same bytes must not re-push gigabytes.
+    A poster is small and *should* be overwritten, because re-ingesting is how
+    you replace one that came out black.
+    """
+    try:
+        _bucket().upload(
+            storage_path, data, {"content-type": content_type, "upsert": "true"}
+        )
+    except Exception as exc:
+        raise StorageError(f"Upload to {BUCKET}/{storage_path} failed: {exc}") from exc
+    return public_url(storage_path)
+
+
 def _result(video_id: str, local_path: Path, storage_path: str, filename: str,
             source_url: str | None, size_bytes: int) -> dict:
     return {
@@ -282,13 +299,20 @@ def local_path_for(video_id: str, storage_path: str | None = None) -> str:
     return str(destination)
 
 
-def delete(storage_path: str) -> None:
-    """Remove an object. Nothing calls this yet - there is no delete endpoint -
-    but a video row that outlives its bytes is the failure it prevents."""
+def delete(storage_path: str | list[str]) -> None:
+    """Remove one or more objects.
+
+    Called by `DELETE /videos/{id}`, which has to take out the video and its
+    poster together - bytes that outlive their record are unreachable and
+    nothing else will ever collect them.
+    """
+    paths = [storage_path] if isinstance(storage_path, str) else list(storage_path)
+    if not paths:
+        return
     try:
-        _bucket().remove([storage_path])
+        _bucket().remove(paths)
     except Exception as exc:
-        raise StorageError(f"Could not delete {BUCKET}/{storage_path}: {exc}") from exc
+        raise StorageError(f"Could not delete {paths} from {BUCKET}: {exc}") from exc
 
 
 def status() -> dict:

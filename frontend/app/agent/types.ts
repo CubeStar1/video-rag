@@ -62,7 +62,7 @@ export interface StudioState {
   isOpen: boolean
   /** Supabase `videos.id` of the video loaded in the persistent player. */
   activeVideoId?: string
-  seekRequest?: { seconds: number; videodbVideoId?: string; nonce: number }
+  seekRequest?: { seconds: number; coreVideoId?: string; nonce: number }
 }
 
 

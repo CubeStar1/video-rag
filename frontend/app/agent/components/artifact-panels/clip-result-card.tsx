@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Crosshair, ExternalLink, Film, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRange, formatTimestamp, toPlayerUrl } from '@/lib/videodb/format'
-import type { ClipItem } from '@/lib/videodb/types'
-
-const isHls = (url: string) => /\.m3u8(\?|#|$)/i.test(url)
+import { formatRange, formatTimestamp, toFragmentUrl } from '@/lib/core/format'
+import type { ClipItem } from '@/lib/core/types'
 
 interface ClipResultCardProps {
   clip: ClipItem
@@ -18,9 +16,9 @@ interface ClipResultCardProps {
 }
 
 /**
- * One retrieved moment, rendered as a search result: the clip itself loops muted
- * as its own thumbnail, over the timestamp and the matched description. Clicking
- * loads it into the panel's player.
+ * One retrieved moment, rendered as a search result: a frame from the clip as
+ * its thumbnail, over the timestamp and the matched description. Clicking loads
+ * it into the panel's player.
  */
 export function ClipResultCard({
   clip,
@@ -33,10 +31,11 @@ export function ClipResultCard({
 
   const duration = Math.max(0, clip.end - clip.start)
   const caption = clip.label || clip.text || 'Matched moment'
-  const playerLink = toPlayerUrl(clip.stream_url)
+  const deepLink = toFragmentUrl(clip.url, clip.start, clip.end)
 
   const copyUrl = async () => {
-    await navigator.clipboard.writeText(clip.stream_url)
+    if (!deepLink) return
+    await navigator.clipboard.writeText(deepLink)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -128,7 +127,7 @@ export function ClipResultCard({
             <button
               type="button"
               onClick={() => void copyUrl()}
-              title="Copy stream URL"
+              title="Copy a link to this moment"
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {copied ? (
@@ -137,12 +136,12 @@ export function ClipResultCard({
                 <Copy className="size-3.5" />
               )}
             </button>
-            {playerLink && (
+            {deepLink && (
               <a
-                href={playerLink}
+                href={deepLink}
                 target="_blank"
                 rel="noreferrer"
-                title="Open in VideoDB player"
+                title="Open this moment in a new tab"
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <ExternalLink className="size-3.5" />
@@ -156,9 +155,14 @@ export function ClipResultCard({
 }
 
 /**
- * The clip playing as its own thumbnail: muted and looping, and only attached
- * once the card scrolls into view so a long result grid loads a handful of
- * streams rather than all of them at once.
+ * A frame from the clip, as its own thumbnail.
+ *
+ * The media fragment `#t=start` is what makes this cheap: the browser range-
+ * requests only the bytes around that offset and paints the frame, so a grid of
+ * twenty results does not download twenty videos. Only attached once the card
+ * scrolls into view, and only played (muted, looping the clip's own span) on
+ * hover — a grid of simultaneously playing videos is a lot of decode for a
+ * preview nobody is watching yet.
  */
 export function ClipThumb({ clip, className }: { clip: ClipItem; className?: string }) {
   const containerRef = useRef<HTMLSpanElement>(null)
@@ -178,52 +182,53 @@ export function ClipThumb({ clip, className }: { clip: ClipItem; className?: str
     return () => observer.disconnect()
   }, [])
 
+  // Hover preview: loop the clip's own span rather than playing on into the
+  // next scene, which is what a thumbnail of *this moment* has to mean.
   useEffect(() => {
+    const container = containerRef.current
     const video = videoRef.current
-    if (!isVisible || !video) return
+    if (!isVisible || !container || !video) return
 
-    let cancelled = false
-    let hls: { destroy: () => void } | null = null
-    const play = () => void video.play().catch(() => {})
-
-    // Safari plays HLS natively; everywhere else hls.js is loaded on demand so the
-    // grid does not pay for it until a card is actually on screen.
-    if (!isHls(clip.stream_url) || video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = clip.stream_url
-      play()
-    } else {
-      void import('hls.js').then(({ default: Hls }) => {
-        if (cancelled || !Hls.isSupported()) return
-        const instance = new Hls({ maxBufferLength: 10 })
-        hls = instance
-        instance.loadSource(clip.stream_url)
-        instance.attachMedia(video)
-        instance.on(Hls.Events.MANIFEST_PARSED, play)
-      })
+    const loop = () => {
+      if (video.currentTime >= clip.end || video.currentTime < clip.start - 0.25) {
+        video.currentTime = clip.start
+      }
+    }
+    const enter = () => {
+      video.currentTime = clip.start
+      video.addEventListener('timeupdate', loop)
+      void video.play().catch(() => {})
+    }
+    const leave = () => {
+      video.pause()
+      video.removeEventListener('timeupdate', loop)
+      video.currentTime = clip.start
     }
 
+    container.addEventListener('pointerenter', enter)
+    container.addEventListener('pointerleave', leave)
     return () => {
-      cancelled = true
-      hls?.destroy()
-      video.removeAttribute('src')
+      container.removeEventListener('pointerenter', enter)
+      container.removeEventListener('pointerleave', leave)
+      video.removeEventListener('timeupdate', loop)
     }
-  }, [isVisible, clip.stream_url])
+  }, [isVisible, clip.start, clip.end])
 
   return (
     <span ref={containerRef} className={cn('block size-full', className)}>
       {isVisible && (
         <video
           ref={videoRef}
+          src={`${clip.url.split('#')[0]}#t=${clip.start.toFixed(2)}`}
           muted
-          loop
           playsInline
           preload="metadata"
-          poster={clip.thumbnail_url ?? undefined}
+          poster={clip.poster_url ?? undefined}
           onLoadedData={() => setHasFrame(true)}
           className="size-full object-cover"
         />
       )}
-      {!hasFrame && !clip.thumbnail_url && (
+      {!hasFrame && !clip.poster_url && (
         <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-muted/40">
           <Film className="size-6 animate-pulse text-muted-foreground/50" />
         </span>

@@ -1,11 +1,20 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
-import { videodb, VideoDBBackendError } from '@/lib/videodb/backend-client'
-import { normalizeSegmentation } from '@/lib/videodb/segmentation'
+import { core, CoreApiError } from '@/lib/core/client'
+import { normalizeChunkConfig } from '@/lib/core/chunking'
+import { reconcileAll } from '@/lib/core/reconcile'
+import type { ProjectVideo } from '@/lib/core/types'
 
-export const maxDuration = 120
+export const maxDuration = 60
 
-/** List every video in a project. */
+/**
+ * List every video in a project, bringing any still-ingesting row up to date
+ * with the core job it is waiting on.
+ *
+ * Reconciling on read is what replaced VideoDB's thumbnail backfill: core
+ * analyses on a background thread and pushes nothing, so the client's existing
+ * poll is where progress is discovered.
+ */
 export async function GET(request: Request) {
   const user = await getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
@@ -15,7 +24,7 @@ export async function GET(request: Request) {
 
   const supabase = await createSupabaseServer()
   const { data, error } = await supabase
-    .from('videos')
+    .from('video_core')
     .select('*')
     .eq('project_id', projectId)
     .eq('user_id', user.id)
@@ -23,66 +32,27 @@ export async function GET(request: Request) {
 
   if (error) return new Response(error.message, { status: 500 })
 
-  return Response.json({ videos: await backfillThumbnails(supabase, data ?? []) })
+  return Response.json({ videos: await reconcileAll(supabase, (data ?? []) as ProjectVideo[]) })
 }
 
 /**
- * A video uploaded from a URL often has no thumbnail until VideoDB finishes
- * processing it. Fill in anything still missing, once, on read.
- */
-async function backfillThumbnails(
-  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
-  videos: any[]
-) {
-  const missing = videos.filter(
-    (video) => video.videodb_video_id && !video.thumbnail_url && video.status !== 'failed'
-  )
-  if (missing.length === 0) return videos
-
-  const byId = new Map<string, Record<string, unknown>>()
-
-  await Promise.all(
-    missing.map(async (video) => {
-      try {
-        const detail = await videodb.detail(video.videodb_video_id)
-        if (!detail.thumbnail_url) return
-
-        const patch = {
-          thumbnail_url: detail.thumbnail_url,
-          duration: video.duration ?? detail.duration ?? null,
-          stream_url: video.stream_url ?? detail.stream_url ?? null,
-          player_url: video.player_url ?? detail.player_url ?? null,
-        }
-        await supabase.from('videos').update(patch).eq('id', video.id)
-        byId.set(video.id, patch)
-      } catch {
-        // Backend down or still processing — try again on the next poll.
-      }
-    })
-  )
-
-  return videos.map((video) => {
-    const patch = byId.get(video.id)
-    return patch ? { ...video, ...patch } : video
-  })
-}
-
-/**
- * Register an uploaded file or a pasted URL, then hand it to the backend for
- * ingestion. The row is created first so the UI can show it while VideoDB works.
+ * Register an uploaded file or a pasted URL, then hand the URL to core.
+ *
+ * The row is created first and deliberately before core has seen a byte: the
+ * video's core id is the hash of its contents, so it does not exist until the
+ * download finishes. Everything identifying arrives later, through the job.
  */
 export async function POST(request: Request) {
   const user = await getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  const { projectId, title, sourceUrl, storagePath, sourceType, segmentation } =
-    await request.json()
+  const { projectId, title, sourceUrl, storagePath, sourceType, config } = await request.json()
 
   if (!projectId) return new Response('projectId is required', { status: 400 })
   if (!sourceUrl) return new Response('sourceUrl is required', { status: 400 })
 
-  // Stored alongside the row so a later re-index replays the same understanding pass.
-  const segmentationConfig = normalizeSegmentation(segmentation)
+  // Stored on the row so a later re-index replays the same analysis.
+  const ingestConfig = normalizeChunkConfig(config)
 
   const supabase = await createSupabaseServer()
 
@@ -97,7 +67,7 @@ export async function POST(request: Request) {
   }
 
   const { data: video, error: insertError } = await supabase
-    .from('videos')
+    .from('video_core')
     .insert({
       project_id: projectId,
       user_id: user.id,
@@ -106,7 +76,7 @@ export async function POST(request: Request) {
       storage_path: storagePath ?? null,
       source_url: sourceUrl,
       status: 'pending',
-      index_config: { segmentation: segmentationConfig },
+      ingest_config: ingestConfig,
     })
     .select()
     .single()
@@ -116,27 +86,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ingested = await videodb.ingest({
-      db_video_id: video.id,
-      source_url: sourceUrl,
-      title: video.title,
-      segmentation: segmentationConfig,
-    })
+    const { job_id } = await core.ingestUrl(sourceUrl, ingestConfig)
 
-    // The backend already wrote these; re-read so the client gets fresh values.
-    const { data: refreshed } = await supabase
-      .from('videos')
-      .select('*')
+    const { data: queued } = await supabase
+      .from('video_core')
+      .update({ status: 'queued', job_id, stage: 'fetching' })
       .eq('id', video.id)
+      .select()
       .single()
 
-    return Response.json({ video: refreshed ?? video, ingest: ingested })
+    return Response.json({ video: queued ?? video, job_id })
   } catch (error: any) {
     const message =
-      error instanceof VideoDBBackendError ? error.message : error?.message || 'Ingest failed'
+      error instanceof CoreApiError ? error.message : error?.message || 'Ingest failed'
 
     await supabase
-      .from('videos')
+      .from('video_core')
       .update({ status: 'failed', error: message })
       .eq('id', video.id)
 

@@ -5,7 +5,7 @@ import { Film, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { VideoCard } from './video-card'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import type { ProjectVideo } from '@/lib/core/types'
 
 interface MediaGridProps {
   videos: ProjectVideo[]

@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownWideNarrow,
   Clock,
@@ -13,22 +13,18 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRange, formatTimestamp } from '@/lib/videodb/format'
+import { formatRange, formatTimestamp } from '@/lib/core/format'
 import { VideoPlayer, type VideoPlayerHandle } from '@/app/agent/components/video-player'
 import {
   ClipResultCard,
   ClipThumb,
 } from '@/app/agent/components/artifact-panels/clip-result-card'
 import { useAgentStore } from '@/app/agent/store/agent-store'
-import type { ClipItem } from '@/lib/videodb/types'
+import type { ClipItem } from '@/lib/core/types'
 
 interface ClipReelPanelProps {
   clips: ClipItem[]
-  /** Optional stream of every clip concatenated — powers "Play all". */
-  compiledStreamUrl?: string
 }
-
-const PLAY_ALL = '__play_all__'
 
 type SortMode = 'relevance' | 'timeline'
 type ViewMode = 'grid' | 'list'
@@ -39,11 +35,13 @@ type ViewMode = 'grid' | 'list'
  * (props only, no store access beyond the timeline hand-off) so it can be reused
  * outside the artifact panel — the panel header supplies the title.
  */
-export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) {
+export function ClipReelPanel({ clips }: ClipReelPanelProps) {
   const playerRef = useRef<VideoPlayerHandle>(null)
-  const [activeId, setActiveId] = useState<string>(() =>
-    compiledStreamUrl ? PLAY_ALL : '0'
-  )
+  const [activeIndex, setActiveIndex] = useState(0)
+  // "Play all" is a client-side sequencer now: there is no compiled stream to
+  // fetch, so playing every moment back to back means advancing the range as
+  // each one ends. Clips from the same video do not even reload the source.
+  const [isPlayingAll, setIsPlayingAll] = useState(false)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortMode>('relevance')
   const [view, setView] = useState<ViewMode>('grid')
@@ -72,25 +70,27 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
       : matched
   }, [ranked, deferredQuery, sort])
 
-  const active = useMemo(() => {
-    if (activeId === PLAY_ALL && compiledStreamUrl) {
-      return {
-        streamUrl: compiledStreamUrl,
-        heading: 'All clips',
-        subheading: `${clips.length} moment${clips.length === 1 ? '' : 's'}, played back to back`,
-        poster: clips[0]?.thumbnail_url,
+  const active = clips[activeIndex] ?? clips[0]
+
+  const select = useCallback((index: number) => {
+    setActiveIndex(index)
+    setIsPlayingAll(false)
+  }, [])
+
+  // Advance to the next clip when one finishes, but only while playing all —
+  // otherwise a clip ending should simply stop, as it did when each clip was
+  // its own stream.
+  const handleRangeEnd = useCallback(() => {
+    if (!isPlayingAll) return
+    setActiveIndex((index) => {
+      const next = index + 1
+      if (next >= clips.length) {
+        setIsPlayingAll(false)
+        return index
       }
-    }
-    const clip = clips[Number(activeId)] ?? clips[0]
-    return {
-      streamUrl: clip?.stream_url,
-      heading: clip?.label || clip?.text || clip?.video_title || 'Clip',
-      subheading: clip
-        ? `${formatRange(clip.start, clip.end)}${clip.video_title ? ` · ${clip.video_title}` : ''}`
-        : '',
-      poster: clip?.thumbnail_url,
-    }
-  }, [activeId, clips, compiledStreamUrl])
+      return next
+    })
+  }, [isPlayingAll, clips.length])
 
   const totalSeconds = useMemo(
     () => clips.reduce((sum, clip) => sum + Math.max(0, clip.end - clip.start), 0),
@@ -112,25 +112,38 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
       <div className="shrink-0 border-b bg-muted/20 p-4">
         <VideoPlayer
           ref={playerRef}
-          key={active.streamUrl}
-          streamUrl={active.streamUrl}
-          poster={active.poster}
+          // Keyed on the source only: moving between clips of the same video is
+          // a seek, not a reload.
+          key={active?.url}
+          src={active?.url}
+          poster={active?.poster_url}
+          range={active ? [active.start, active.end] : null}
+          onRangeEnd={handleRangeEnd}
           autoPlay
         />
         <div className="mt-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{active.heading}</p>
+            <p className="truncate text-sm font-medium">
+              {active?.label || active?.text || active?.video_title || 'Clip'}
+            </p>
             <p className="truncate text-xs tabular-nums text-muted-foreground">
-              {active.subheading}
+              {active
+                ? `${formatRange(active.start, active.end)}${
+                    active.video_title ? ` · ${active.video_title}` : ''
+                  }${isPlayingAll ? ` · ${activeIndex + 1} of ${clips.length}` : ''}`
+                : ''}
             </p>
           </div>
-          {compiledStreamUrl && (
+          {clips.length > 1 && (
             <button
               type="button"
-              onClick={() => setActiveId(PLAY_ALL)}
+              onClick={() => {
+                setActiveIndex(0)
+                setIsPlayingAll(true)
+              }}
               className={cn(
                 'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-                activeId === PLAY_ALL
+                isPlayingAll
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'bg-background hover:bg-accent'
               )}
@@ -208,8 +221,8 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
                 key={`${clip.video_id}-${clip.start}-${id}`}
                 clip={clip}
                 rank={rank}
-                isActive={activeId === id}
-                onSelect={() => setActiveId(id)}
+                isActive={activeIndex === Number(id)}
+                onSelect={() => select(Number(id))}
                 onLocate={() => seekStudio(clip.start, clip.video_id)}
               />
             ))}
@@ -221,8 +234,8 @@ export function ClipReelPanel({ clips, compiledStreamUrl }: ClipReelPanelProps) 
                 key={`${clip.video_id}-${clip.start}-${id}`}
                 clip={clip}
                 rank={rank}
-                isActive={activeId === id}
-                onSelect={() => setActiveId(id)}
+                isActive={activeIndex === Number(id)}
+                onSelect={() => select(Number(id))}
                 onLocate={() => seekStudio(clip.start, clip.video_id)}
               />
             ))}

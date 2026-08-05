@@ -3,7 +3,7 @@ import { Film } from 'lucide-react'
 import { useArtifact } from '@/app/agent/hooks/use-artifact'
 import { useAgentStore } from '@/app/agent/store/agent-store'
 import { ClipReelPanel } from '@/app/agent/components/artifact-panels/clip-reel-panel'
-import type { ShowClipsArgs } from '@/lib/videodb/types'
+import type { ShowClipsArgs } from '@/lib/core/types'
 
 const isDone = (state: string) => state === 'result' || state === 'output-available'
 
@@ -12,8 +12,9 @@ function normalise(args: any): ShowClipsArgs | null {
   return {
     title: args.title || 'Clips',
     identifier: args.identifier,
-    compiled_stream_url: args.compiled_stream_url,
-    clips: args.clips.filter((clip: any) => clip?.stream_url),
+    // A clip without its video's URL cannot be played — the range is a range
+    // *of* something, and there is no per-clip stream to fall back on.
+    clips: args.clips.filter((clip: any) => clip?.url),
   }
 }
 
@@ -25,10 +26,7 @@ function useShowClips(args: any) {
     if (!payload) return
 
     showArtifact(
-      <ClipReelPanel
-        clips={payload.clips}
-        compiledStreamUrl={payload.compiled_stream_url}
-      />,
+      <ClipReelPanel clips={payload.clips} />,
       {
         title: payload.title,
         displayType: 'custom',

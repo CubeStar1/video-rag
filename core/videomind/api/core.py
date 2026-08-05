@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .. import aggregators, analyzers, store, storage
+from .. import aggregators, analyzers, poster, store, storage
 from ..chunk import chunk_video
-from ..paths import RECORDS_DIR, ensure as ensure_dirs
+from ..paths import CACHE_DIR, RECORDS_DIR, ensure as ensure_dirs
 from ..vectordb import ChunkStore, config_key
 
 
@@ -70,6 +70,11 @@ def upload(
     video_id, video_path = media["video_id"], media["local_path"]
     cfg = config_key(preset, min_duration, max_duration, weights=weights, interval=interval)
 
+    # Before chunking, so a client polling the job can render the video as soon
+    # as it is decodable rather than waiting minutes for analysis to finish.
+    duration = poster.duration_of(video_path)
+    poster_url = _write_poster(video_id, video_path)
+
     report("chunking")
     chunks = chunk_video(
         video_path,
@@ -112,6 +117,9 @@ def upload(
         if existing:
             cs.delete_video(video_id)
     record["chunk_config"] = cfg
+    record["poster_url"] = poster_url
+    record["duration"] = duration
+    record["size_bytes"] = media.get("size_bytes")
 
     indexed = {}
     try:
@@ -158,10 +166,14 @@ def upload(
     result = {
         "video_id": video_id,
         "video_url": media["video_url"],
+        "poster_url": poster_url,
         "storage_path": media["storage_path"],
         "filename": media["filename"],
+        "duration": duration,
+        "size_bytes": media.get("size_bytes"),
         "chunk_config": cfg,
         "chunks": len(chunks),
+        "analyzers": record["analyzers"],
         "indexed": indexed,
     }
 
@@ -176,22 +188,83 @@ def upload(
     return result
 
 
+POSTER_NAME = "poster.jpg"
+
+
+def _write_poster(video_id: str, video_path: str) -> str | None:
+    """Extract one frame and put it in the bucket beside the video.
+
+    Never fatal: a video that analysed fine must not fail its ingest because a
+    thumbnail could not be written, so every failure here degrades to no
+    poster rather than a failed job.
+    """
+    try:
+        data = poster.poster_bytes(video_path)
+        if not data:
+            return None
+        return storage.put_object(f"{video_id}/{POSTER_NAME}", data, "image/jpeg")
+    except Exception:
+        return None
+
+
 def list_videos() -> list[dict]:
     """Videos that have been ingested, from their saved records."""
     out = []
     for path in sorted(RECORDS_DIR.glob("*.json")) if RECORDS_DIR.exists() else []:
         record = json.loads(path.read_text(encoding="utf-8"))
+        chunks = record.get("chunks", [])
         out.append(
             {
                 "video_id": record.get("video_id", path.stem),
                 "filename": record.get("filename"),
                 "video_url": record.get("video_url"),
-                "chunks": len(record.get("chunks", [])),
+                "poster_url": record.get("poster_url"),
+                "duration": record.get("duration")
+                or (round(chunks[-1]["end"], 2) if chunks else 0.0),
+                "chunks": len(chunks),
                 "chunk_config": record.get("chunk_config"),
                 "analyzers": record.get("analyzers", []),
             }
         )
     return out
+
+
+def delete_video(video_id: str) -> dict | None:
+    """Remove a video completely: vectors, record, bucket objects, cache.
+
+    Every store is dropped in one call because partial deletion is worse than
+    none - vectors without a record are unciteable, and an object without
+    either is unreachable bytes nothing will ever collect.
+
+    Storage failures are reported rather than raised: the record and the
+    vectors are the parts that make a video *visible*, and leaving those in
+    place because the bucket call failed would keep a deleted video searchable.
+    """
+    path = record_path_for(video_id)
+    if path is None:
+        return None
+    record = json.loads(path.read_text(encoding="utf-8"))
+
+    with ChunkStore() as cs:
+        cs.delete_video(video_id)
+
+    objects = [p for p in (record.get("storage_path"), f"{video_id}/{POSTER_NAME}") if p]
+    storage_error = None
+    try:
+        storage.delete(objects)
+    except Exception as exc:
+        storage_error = f"{type(exc).__name__}: {exc}"
+
+    path.unlink(missing_ok=True)
+    for cached in CACHE_DIR.glob(f"{video_id}.*"):
+        cached.unlink(missing_ok=True)
+
+    return {
+        "video_id": video_id,
+        "deleted": True,
+        "objects": objects,
+        **({"storage_error": storage_error} if storage_error else {}),
+    }
 
 
 def record_path_for(video_id: str) -> Path | None:
@@ -409,14 +482,21 @@ def get_video(video_id: str) -> dict | None:
         "video_id": record.get("video_id"),
         "filename": record.get("filename"),
         "video_url": record.get("video_url"),
+        "poster_url": record.get("poster_url"),
         "storage_path": record.get("storage_path"),
         "source_url": record.get("source_url"),
+        "size_bytes": record.get("size_bytes"),
         "preset": record.get("preset"),
         "params": record.get("params", {}),
         "chunk_config": record.get("chunk_config"),
         "analyzers": record.get("analyzers", []),
+        "aggregates": sorted(record.get("aggregates", {})),
         "chunks": len(chunks),
-        "duration": round(chunks[-1]["end"], 2) if chunks else 0.0,
+        # The container's own duration when ingest recorded it; the last chunk's
+        # end is the fallback for records written before posters existed, and is
+        # only the same number when chunking covered the whole video.
+        "duration": record.get("duration")
+        or (round(chunks[-1]["end"], 2) if chunks else 0.0),
     }
 
 

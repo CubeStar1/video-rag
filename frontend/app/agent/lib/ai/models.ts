@@ -7,6 +7,7 @@ export interface Model {
 export const models: Model[] = [
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI' },
   { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', provider: 'OpenAI' },
+  {id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', provider: 'OpenAI'},
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'Google' },
   { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3', provider: 'Groq' },
   { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B', provider: 'Groq' },
@@ -16,4 +17,4 @@ export const models: Model[] = [
   { id: 'gpt-oss-120b', label: 'GPT OSS 120B', provider: 'Cerebras' },
 ];
 
-export const defaultModel = 'gpt-4.1-mini';
+export const defaultModel = 'gpt-5.4-mini';

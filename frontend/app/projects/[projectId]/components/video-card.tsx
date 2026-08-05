@@ -17,9 +17,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { formatDuration } from '@/lib/videodb/format'
-import { describeSegmentation } from '@/lib/videodb/segmentation'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import { formatDuration } from '@/lib/core/format'
+import { describeChunking } from '@/lib/core/chunking'
+import type { ProjectVideo } from '@/lib/core/types'
 
 interface VideoCardProps {
   video: ProjectVideo
@@ -50,12 +50,24 @@ function StatusPill({ video }: { video: ProjectVideo }) {
     )
   }
 
+  // Core reports which pipeline stage it is on; that is more informative than a
+  // generic spinner on a job that runs for minutes.
+  const STAGE_LABELS: Record<string, string> = {
+    fetching: 'Downloading',
+    chunking: 'Splitting',
+    chunked: 'Splitting',
+    analyzing: 'Analysing',
+    indexing: 'Indexing',
+    aggregating: 'Summarising',
+    complete: 'Finishing',
+  }
+
   const label =
-    video.status === 'pending'
-      ? 'Queued'
-      : video.status === 'ingesting'
-        ? 'Uploading'
-        : video.index_status?.message || 'Indexing'
+    video.status === 'pending' || video.status === 'uploading'
+      ? 'Uploading'
+      : video.status === 'queued'
+        ? 'Queued'
+        : (video.stage && STAGE_LABELS[video.stage]) || 'Analysing'
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
@@ -68,9 +80,9 @@ function StatusPill({ video }: { video: ProjectVideo }) {
 export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const isReady = video.status === 'ready'
-  // Absent on rows ingested before segmentation was configurable — show nothing
-  // rather than implying a config we can't vouch for.
-  const segmentation = video.index_config?.segmentation ?? video.index_status?.segmentation
+  // Absent while a video is still queued — show nothing rather than implying a
+  // config we can't vouch for.
+  const chunking = video.ingest_config
 
   return (
     <div className="group flex flex-col gap-2">
@@ -82,10 +94,10 @@ export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardPr
           'hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         )}
       >
-        {video.thumbnail_url && !imageFailed ? (
-          // eslint-disable-next-line @next/next/no-img-element -- thumbnails come from arbitrary VideoDB hosts
+        {video.poster_url && !imageFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element -- the poster is written by core into its own bucket
           <img
-            src={video.thumbnail_url}
+            src={video.poster_url}
             alt={video.title}
             className="size-full object-cover"
             onError={() => setImageFailed(true)}
@@ -113,9 +125,9 @@ export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardPr
           <div className="mt-1">
             <StatusPill video={video} />
           </div>
-          {segmentation && (
+          {chunking && (
             <p className="mt-1 truncate text-[11px] text-muted-foreground/70">
-              {describeSegmentation(segmentation)}
+              {describeChunking(chunking)}
             </p>
           )}
         </div>
