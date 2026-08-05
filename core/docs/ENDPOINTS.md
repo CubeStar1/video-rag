@@ -15,14 +15,15 @@ Base URL `http://127.0.0.1:8077`. Interactive docs at `/docs`.
 | `GET` | `/videos/{video_id}/aggregates` | Video-level results: summary, chapters, entities… |
 | `POST` | `/videos/{video_id}/aggregates` | Re-run aggregators without re-analysing |
 | `GET` | `/videos/{video_id}/entities` | People linked across chunks, with timelines |
-| `POST` | `/videos` | Upload a video and start ingestion |
+| `POST` | `/videos` | Upload a video file and start ingestion |
+| `POST` | `/videos/url` | Ingest a video from an http(s) URL |
 | `GET` | `/jobs/{job_id}` | Job progress |
 | `GET` | `/jobs` | All jobs this process has seen |
 | `POST` | `/query` | Search, optionally with a synthesised answer |
 | `POST` | `/ask` | Answer a question using aggregates as well as segments |
-| `GET` | `/media/{video_id}` | Stream a video (supports range requests) |
+| `GET` | `/media/{video_id}` | Redirect to the video in Supabase Storage |
 
-Everything is a read except `POST /videos`, which spends time and money.
+Everything is a read except the two ingest routes, which spend time and money.
 `POST /query` and `POST /ask` are POSTs only because their bodies are too
 complex for a query string — they change nothing.
 
@@ -32,6 +33,7 @@ complex for a query string — they change nothing.
 
 ```json
 { "status": "ok", "ui": true,
+  "storage": { "ok": true, "bucket": "videos", "error": null },
   "analyzers": ["default_video", "diarization", "object_detection", "ocr", "people", "transcript"],
   "aggregators": ["chapters", "cooccurrence", "entities", "entity_timelines", "events",
                   "ner", "novelty", "object_entities", "sentiment", "speaker_stats",
@@ -39,6 +41,10 @@ complex for a query string — they change nothing.
 ```
 
 `ui` is false when the server was started with `--api-only`.
+
+`status` is `degraded` when Storage is unreachable — a bad key or a missing
+bucket. The server still answers reads; ingest will fail. Worth checking here
+rather than discovering it minutes into a background job.
 
 ---
 
@@ -83,6 +89,12 @@ client can enforce it rather than discovering it as a 400.
 `multipart/form-data`. Returns **202** immediately — ingestion runs in the
 background because it takes minutes.
 
+Video bytes live in a Supabase Storage bucket, not on this server's disk. Both
+ingest routes end the same way: the file lands in the bucket under its content
+hash, and every response from then on carries a URL, never a path. Use this
+route for a browser or curl; for anything large prefer `POST /videos/url`, which
+does not push the video through this process.
+
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `file` | file | *required* | The video |
@@ -109,11 +121,41 @@ curl -X POST http://127.0.0.1:8077/videos \
 ```
 
 ```json
-{ "job_id": "d9b16a609ab1", "status": "queued", "video_path": "uploads\\clip.mp4" }
+{ "job_id": "d9b16a609ab1", "status": "queued", "source": "clip.mp4" }
 ```
 
 Returns **400** for an unknown analyzer, an unknown mode, or a mode missing its
 required parameters.
+
+---
+
+## `POST /videos/url`
+
+`application/json`. Same fields as `POST /videos`, with `url` in place of
+`file`. Returns **202**.
+
+The primary path for a frontend: upload straight to Storage, then hand over the
+URL. A URL that already points into our own bucket needs no special case — the
+bytes still come down to be decoded, and the re-upload is skipped because the
+object is already there.
+
+```bash
+curl -X POST http://127.0.0.1:8077/videos/url \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/clip.mp4","analyzers":"default_video,transcript","preset":"video"}'
+```
+
+```json
+{ "job_id": "d9b16a609ab1", "status": "queued", "source": "https://example.com/clip.mp4" }
+```
+
+`video_id` is the hash of the bytes, so it does not exist until the download
+finishes — it arrives in the job result, with `video_url`.
+
+Returns **400** for a non-`http(s)` URL as well as for the analyzer and mode
+errors above. A URL that 404s, serves an HTML error page instead of a video, or
+exceeds `VIDEOMIND_MAX_BYTES` fails the **job**, not the request: the download
+starts after the 202.
 
 ---
 
@@ -137,7 +179,7 @@ Poll until `status` is `done` or `failed`.
 | Field | Meaning |
 |---|---|
 | `status` | `queued` → `running` → `done` \| `failed` |
-| `stage` | `chunking`, `chunked`, `analyzing`, `indexing`, `complete` |
+| `stage` | `fetching`, `chunking`, `chunked`, `analyzing`, `indexing`, `complete` |
 | `detail` | Stage context, e.g. `{"chunks": 39}` or `{"analyzer": "transcript"}` |
 | `result` | The **UploadResult** below, once `done` |
 | `error` | Message when `failed`, else `null` |
@@ -147,7 +189,9 @@ Poll until `status` is `done` or `failed`.
 ```json
 {
   "video_id": "95e110e25070fcfc",
-  "video_path": "uploads\\clip.mp4",
+  "video_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4",
+  "storage_path": "95e110e25070fcfc/clip.mp4",
+  "filename": "clip.mp4",
   "chunk_config": "interval:20",
   "chunks": 2,
   "indexed": { "default_video": 2, "transcript": 0 }
@@ -167,7 +211,8 @@ silent video produces no transcript text, so there is nothing to embed.
 ```json
 { "videos": [ {
   "video_id": "95e110e25070fcfc",
-  "video": "uploads\\clip.mp4",
+  "filename": "clip.mp4",
+  "video_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4",
   "chunks": 2,
   "chunk_config": "interval:20",
   "analyzers": ["default_video", "transcript"]
@@ -383,7 +428,7 @@ fabricated from an empty result set.
 | Field | Type | Notes |
 |---|---|---|
 | `video_id` | string | Content hash of the source file |
-| `video_path` | string | Path on disk |
+| `video_url` | string | Public Storage URL of the source video |
 | `chunk_id` | int | Index **within its video** — only meaningful with `video_id` |
 | `start`, `end` | float | Seconds; use these to seek |
 | `timecode` | string | Human form, e.g. `"1:17.80-1:23.80"` |
@@ -403,20 +448,23 @@ Returns **400** for an unknown `analyzer` or `field`.
 
 ## `GET /media/{video_id}`
 
-Streams the source file. Honours `Range`, returning **206 Partial Content** with
-`Content-Range` — this is what makes seeking work. Without it a browser can only
-play from the start, so clicking a timestamp would do nothing.
+**307** to the video in Storage, which serves the bytes and handles `Range`
+itself — so seeking still works, and video no longer transits this process.
 
 ```
 GET /media/95e110e25070fcfc
-Range: bytes=1000000-1000999
 
-HTTP/1.1 206 Partial Content
-Content-Range: bytes 1000000-1000999/28818231
-Accept-Ranges: bytes
+HTTP/1.1 307 Temporary Redirect
+Location: https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4
 ```
 
-**404** if the id is unknown or the file has moved since ingestion.
+The bucket is public, so `video_url` in any response plays directly and this
+endpoint is not required. It exists because it is the only media URL derivable
+from a `video_id` alone — which is all a search hit at `detail=minimal`
+carries — and because it is the one place that changes if the bucket is ever
+made private. Prefer it over pasting `video_url` into a player for that reason.
+
+**404** if the id is unknown.
 
 ---
 

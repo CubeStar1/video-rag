@@ -15,8 +15,10 @@ pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 \
     --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements.txt
 
-echo "OPENAI_API_KEY=sk-..." >  .env
-echo "HF_TOKEN=hf_..."       >> .env      # diarization only
+echo "OPENAI_API_KEY=sk-..."            >  .env
+echo "HF_TOKEN=hf_..."                  >> .env      # diarization only
+echo "SUPABASE_URL=https://xxx.supabase.co"   >> .env
+echo "SUPABASE_SERVICE_ROLE_KEY=eyJ..."       >> .env
 
 python serve.py               # http://127.0.0.1:8077
 ```
@@ -25,8 +27,26 @@ python serve.py               # http://127.0.0.1:8077
 gated — accept the terms at
 <https://huggingface.co/pyannote/speaker-diarization-community-1> first.
 
-Upload a video in the **Upload** tab, then use **Search**, **Ask**,
-**Insights** and **Details**.
+Video bytes live in a public Supabase Storage bucket named `videos`, created
+once per project:
+
+```python
+from supabase import create_client
+create_client(URL, SERVICE_ROLE_KEY).storage.create_bucket("videos", options={"public": True})
+```
+
+Check it is wired up with `GET /health` — `storage.ok` is false, and `status`
+`degraded`, when the key is wrong or the bucket is missing.
+
+Upload a video in the **Upload** tab — a file or a URL — then use **Search**,
+**Ask**, **Insights** and **Details**.
+
+| Variable | Default | For |
+|---|---|---|
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | – | Storage. Required; ingest cannot run without them |
+| `VIDEOMIND_BUCKET` | `videos` | Bucket name |
+| `VIDEOMIND_MAX_BYTES` | 4 GiB | Cap on a server-side fetch of a caller-supplied URL |
+| `VIDEOMIND_CACHE` | `data/cache` | Local copies of videos, keyed by content hash |
 
 ## How it works
 

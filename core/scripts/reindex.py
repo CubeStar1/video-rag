@@ -39,7 +39,7 @@ if not records:
 for path in records:
     record = json.loads(path.read_text(encoding="utf-8"))
     video_id = record["video_id"]
-    video_path = record["video"]
+    video_url = record["video_url"]
     cfg = record["chunk_config"]
 
     for analyzer_id in record.get("analyzers", []):
@@ -55,7 +55,7 @@ for path in records:
             for c in record["chunks"]
             if c.get(analyzer_id)
         ]
-        n = cs.add_chunks(video_id, video_path, payload, analyzer_id, cfg) if payload else 0
+        n = cs.add_chunks(video_id, video_url, payload, analyzer_id, cfg) if payload else 0
         print(f"{path.stem[:34]:36s} {analyzer_id:14s} {n:3d} points")
 
 print(f"\ntotal points: {cs.count()}")

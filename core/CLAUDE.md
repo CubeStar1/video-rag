@@ -44,6 +44,8 @@ vectordb/                BGE embeddings + Qdrant (named vectors)
 api/core.py              upload / query / ask / aggregate  (real logic)
 api/app.py               thin HTTP layer
 api/ui.py                web UI, mounted only when VIDEOMIND_UI != 0
+storage.py               Supabase Storage <-> local cache; the only module
+                         that knows both a URL and a path
 paths.py                 every path, all env-overridable
 ```
 
@@ -61,6 +63,23 @@ aggregators call analyzer output directly. Do not have the service call itself
 over HTTP.
 
 ## Decisions that look odd but are deliberate
+
+- **Videos are URLs outside, paths inside.** Every request and response speaks
+  Storage URLs; everything below `storage.py` gets a local path and does not
+  know Storage exists. The boundary is one module because it is the only place
+  both forms are valid at once.
+- **The video is downloaded, not streamed.** Analyzers each re-open the file and
+  `frames.py` seeks per chunk; that access pattern is priced for a local disk
+  (see the 22x seek note below) and paying it to the network instead would be
+  far worse. So a video is cached once under its content hash and every pass
+  runs against that.
+- **No local path is ever stored.** A stored path goes stale the moment the data
+  directory moves — there used to be a fallback in `video_path_for` to paper
+  over exactly that. Records hold `storage_path`; the local file is re-derived
+  from the content hash on demand and re-downloaded if the cache is cold.
+- **`AggregateContext.video_path` is a lazy property.** No aggregator currently
+  opens the video, and re-running twelve of them on a cold cache must not pay
+  for a download nothing reads.
 
 - **Weights renormalise over signals that fired.** Otherwise the preset acts as
   a granularity dial: on single-signal footage `audio` and `video` produced 12

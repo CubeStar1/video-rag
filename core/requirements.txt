@@ -39,6 +39,7 @@ numpy==2.3.5
 scipy==1.16.3
 scikit-learn==1.7.2
 qdrant-client==1.19.0          # embedded vector store
+supabase==2.31.0               # video bytes; brings httpx, used for downloads
 
 # --- service ---
 fastapi==0.135.3

@@ -4,10 +4,20 @@ from pathlib import Path
 Chunks = list[tuple[float, float]]
 
 
-def build(video_path: str, chunks: Chunks, preset: str | None = None, **params) -> dict:
-    """Wrap raw (start, end) pairs into the on-disk chunk record."""
+def build(media: dict, chunks: Chunks, preset: str | None = None, **params) -> dict:
+    """Wrap raw (start, end) pairs into the on-disk chunk record.
+
+    `media` is what `storage.fetch_source`/`put_local` returned. The record
+    stores the video's Storage identity and never its local path: the cached
+    file is derived from `video_id` on demand, so a record stays correct after
+    the data directory moves or the cache is wiped.
+    """
     return {
-        "video": str(video_path),
+        "video_id": media["video_id"],
+        "video_url": media["video_url"],
+        "storage_path": media["storage_path"],
+        "source_url": media.get("source_url"),
+        "filename": media["filename"],
         "preset": preset,
         "params": params,
         "chunks": [

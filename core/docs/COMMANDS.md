@@ -61,13 +61,22 @@ Remove-Item -Recurse -Force data
 
 Recreated automatically on the next upload. That removes the vector store,
 every video's record — including its summaries, chapters, entities and stats,
-which live in the record alongside the per-chunk output — the uploaded videos,
-and downloaded model weights. `media/` is untouched.
+which live in the record alongside the per-chunk output — the cached videos,
+and downloaded model weights. `media/` is untouched, and so is the Storage
+bucket: the videos themselves are not local state and survive any reset here.
 
 To keep uploads and model weights and clear only the index:
 
 ```bash
 rm -rf data/vectordb data/records
+```
+
+`data/cache/` is the local copy of each video, keyed by content hash. Deleting
+it costs a re-download from Storage on the next thing that needs to decode,
+never data:
+
+```bash
+rm -rf data/cache
 ```
 
 Paths are overridable, so a second instance can use its own data:

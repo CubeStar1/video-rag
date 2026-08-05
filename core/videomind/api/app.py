@@ -9,16 +9,14 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 warnings.filterwarnings("ignore")
 
-import mimetypes
-import re
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from .. import aggregators, analyzers
+from .. import aggregators, analyzers, storage
 from ..paths import UPLOAD_DIR, ensure as ensure_dirs
 from ..vectordb.render import VECTOR_FIELDS
 from ..vectordb.store import FILTER_SPEC
@@ -37,58 +35,41 @@ if ui.enabled():
 
 @app.get("/health")
 def health():
-    """Liveness plus what this instance has loaded."""
+    """Liveness plus what this instance has loaded.
+
+    Storage is probed rather than assumed: a bad key or a missing bucket would
+    otherwise first surface as a failed ingest, minutes later, on a background
+    thread, in a job nobody is watching.
+    """
+    store_status = storage.status()
     return {
-        "status": "ok",
+        "status": "ok" if store_status["ok"] else "degraded",
         "ui": ui.enabled(),
+        "storage": store_status,
         "analyzers": analyzers.available(),
         "aggregators": aggregators.available(),
     }
 
 
 @app.get("/media/{video_id}")
-def media(video_id: str, request: Request):
-    """Stream an ingested video, honouring Range requests.
+def media(video_id: str):
+    """Redirect to the video in Storage.
 
-    Range support is what makes seeking work: without 206 responses the
-    browser can only play from the start, so clicking a timestamp would do
-    nothing.
+    Kept as an endpoint even though the bucket is public and every response
+    already carries `video_url`: this is the one media URL derivable from a
+    video_id alone, which is all a search hit at detail="minimal" carries. It
+    also stays correct if the bucket is ever made private - only this function
+    changes, to mint a signed URL.
+
+    The hand-rolled Range/206 handling is gone with it. Storage serves ranges
+    correctly, so seeking still works, and the bytes no longer transit Python.
     """
-    path = core.video_path_for(video_id)
-    if not path or not Path(path).exists():
+    url = core.video_url_for(video_id)
+    if not url:
         raise HTTPException(404, f"No media for video_id {video_id!r}")
-
-    file_path = Path(path)
-    size = file_path.stat().st_size
-    media_type = mimetypes.guess_type(str(file_path))[0] or "video/mp4"
-
-    range_header = request.headers.get("range")
-    if not range_header:
-        return FileResponse(file_path, media_type=media_type)
-
-    match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-    if not match:
-        raise HTTPException(416, "Malformed Range header")
-    start = int(match.group(1) or 0)
-    end = int(match.group(2)) if match.group(2) else size - 1
-    end = min(end, size - 1)
-    if start > end:
-        raise HTTPException(416, "Range not satisfiable")
-
-    with file_path.open("rb") as handle:
-        handle.seek(start)
-        data = handle.read(end - start + 1)
-
-    return Response(
-        content=data,
-        status_code=206,
-        media_type=media_type,
-        headers={
-            "Content-Range": f"bytes {start}-{end}/{size}",
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(len(data)),
-        },
-    )
+    # 307, not 302: preserves the method and, unlike 301/308, is not cached, so
+    # a later move to signed URLs cannot be defeated by a stale browser cache.
+    return RedirectResponse(url, status_code=307)
 
 
 class QueryRequest(BaseModel):
@@ -269,25 +250,21 @@ def get_chunk(video_id: str, chunk_id: int, verbose: bool = False):
     return chunk
 
 
-@app.post("/videos", status_code=202)
-async def upload_video(
-    file: UploadFile = File(...),
-    analyzers_csv: str = Form("default_video", alias="analyzers"),
-    mode: str = Form("preset"),
-    preset: str = Form("audio_video"),
-    interval: float | None = Form(None),
-    speaker: float | None = Form(None),
-    silence: float | None = Form(None),
-    cut: float | None = Form(None),
-    semantic: float | None = Form(None),
-    min_duration: float = Form(5.0),
-    max_duration: float = Form(20.0),
-):
-    """Upload a video and start ingestion.
+def _ingest_params(
+    analyzers_csv: str,
+    mode: str,
+    preset: str,
+    interval: float | None,
+    speaker: float | None,
+    silence: float | None,
+    cut: float | None,
+    semantic: float | None,
+) -> tuple[list[str], dict]:
+    """Validate the chunking options both ingest routes share.
 
-    mode="preset"   -> `preset` names a weighting
-    mode="weights"  -> speaker/silence/cut/semantic set a custom weighting
-    mode="interval" -> `interval` seconds per chunk, min/max not applied
+    Shared so that uploading a file and ingesting a URL cannot drift into
+    accepting different arguments - the only thing that legitimately differs
+    between them is where the bytes come from.
     """
     analyzer_ids = [a.strip() for a in analyzers_csv.split(",") if a.strip()]
     try:
@@ -311,8 +288,57 @@ async def upload_video(
     else:
         raise HTTPException(400, f"Unknown mode {mode!r}; expected preset|weights|interval")
 
+    return analyzer_ids, kwargs
+
+
+class IngestRequest(BaseModel):
+    """Ingest by URL. Mirrors the multipart form of POST /videos field for field."""
+
+    url: str
+    analyzers: str = "default_video"
+    mode: str = "preset"
+    preset: str = "audio_video"
+    interval: float | None = None
+    speaker: float | None = None
+    silence: float | None = None
+    cut: float | None = None
+    semantic: float | None = None
+    min_duration: float = 5.0
+    max_duration: float = 20.0
+
+
+@app.post("/videos", status_code=202)
+async def upload_video(
+    file: UploadFile = File(...),
+    analyzers_csv: str = Form("default_video", alias="analyzers"),
+    mode: str = Form("preset"),
+    preset: str = Form("audio_video"),
+    interval: float | None = Form(None),
+    speaker: float | None = Form(None),
+    silence: float | None = Form(None),
+    cut: float | None = Form(None),
+    semantic: float | None = Form(None),
+    min_duration: float = Form(5.0),
+    max_duration: float = Form(20.0),
+):
+    """Upload a video file and start ingestion.
+
+    The file is written to disk, uploaded to Storage, and then analysed from a
+    local copy. Convenient for a browser or curl, but it pushes the whole video
+    through this process and through whatever body-size cap sits in front of
+    it - a large video is better uploaded straight to Storage and ingested with
+    POST /videos/url.
+
+    mode="preset"   -> `preset` names a weighting
+    mode="weights"  -> speaker/silence/cut/semantic set a custom weighting
+    mode="interval" -> `interval` seconds per chunk, min/max not applied
+    """
+    analyzer_ids, kwargs = _ingest_params(
+        analyzers_csv, mode, preset, interval, speaker, silence, cut, semantic
+    )
+
     ensure_dirs()
-    dest = UPLOAD_DIR / file.filename
+    dest = UPLOAD_DIR / Path(file.filename or "video.mp4").name
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
 
@@ -326,7 +352,41 @@ async def upload_video(
         max_duration=max_duration,
         **kwargs,
     )
-    return {"job_id": job_id, "status": "queued", "video_path": str(dest)}
+    return {"job_id": job_id, "status": "queued", "source": dest.name}
+
+
+@app.post("/videos/url", status_code=202)
+def ingest_url(request: IngestRequest):
+    """Ingest a video from any http(s) URL and start analysis.
+
+    The primary path for a frontend: upload straight to Storage, then hand the
+    URL over. A URL that already points into our own bucket needs no special
+    case - the bytes still have to come down to be decoded, and the re-upload
+    is skipped because the object is already there.
+
+    `video_id` is the hash of the bytes, so it is not known until the download
+    finishes; it arrives in the job result along with `video_url`.
+    """
+    analyzer_ids, kwargs = _ingest_params(
+        request.analyzers, request.mode, request.preset, request.interval,
+        request.speaker, request.silence, request.cut, request.semantic,
+    )
+    try:
+        core.validate_source(request.url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    job_id = jobs.create()
+    jobs.run_in_background(
+        job_id,
+        core.upload,
+        request.url,
+        analyzer_ids=analyzer_ids,
+        min_duration=request.min_duration,
+        max_duration=request.max_duration,
+        **kwargs,
+    )
+    return {"job_id": job_id, "status": "queued", "source": request.url}
 
 
 @app.get("/jobs/{job_id}")

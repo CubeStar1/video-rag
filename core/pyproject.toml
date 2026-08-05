@@ -25,6 +25,7 @@ dependencies = [
     "sentence-transformers==5.1.2",
     "silero-vad==6.2.1",
     "soundfile==0.14.0",
+    "supabase==2.31.0",
     "torch==2.11.0",
     "torchaudio==2.11.0",
     "torchvision==0.26.0",

@@ -214,7 +214,12 @@
   <section id="paneUpload" class="hide">
     <div class="panel">
       <h2>Upload &amp; ingest</h2>
-      <label>Video file</label><input type="file" id="uFile" accept="video/*">
+      <label>Video file</label><input type="file" id="uFile" accept="video/*" onchange="syncSource()">
+      <label>…or video URL</label><input type="text" id="uUrl" placeholder="https://…/video.mp4" oninput="syncSource()">
+      <p class="muted" style="font-size:12px;margin:6px 0 0">
+        Either one. A URL is fetched server-side; a file is uploaded through this
+        page. Both end up in the same bucket, keyed by content hash.
+      </p>
       <label>Analyzers</label><div class="chk" id="uAnalyzers"></div>
       <label>Chunking</label>
       <select id="uMode" onchange="syncMode()">
@@ -299,13 +304,15 @@ function enforceExclusive(box){
 
 async function loadVideos(){
   VIDEOS = (await (await fetch('/videos')).json()).videos;
-  const opts = VIDEOS.map(v=>`<option value="${v.video_id}">${esc(v.video.split(/[\\/]/).pop())} — ${v.chunks} chunks</option>`).join('');
+  const name = v => v.filename || v.video_id;
+  const opts = VIDEOS.map(v=>`<option value="${v.video_id}">${esc(name(v))} — ${v.chunks} chunks</option>`).join('');
   $('qVideo').innerHTML = '<option value="">All videos</option>' + opts;
   $('iVideo').innerHTML = opts || '<option value="">No videos yet</option>';
   $('dVideo').innerHTML = opts || '<option value="">No videos yet</option>';
   $('videoList').innerHTML = VIDEOS.length
     ? `<table><tr><th>id</th><th>file</th><th>chunks</th><th>analyzers</th></tr>${VIDEOS.map(v=>
-        `<tr><td><code>${v.video_id.slice(0,10)}</code></td><td>${esc(v.video.split(/[\\/]/).pop())}</td>
+        `<tr><td><code>${v.video_id.slice(0,10)}</code></td>
+         <td>${v.video_url?`<a href="${esc(v.video_url)}" target="_blank" rel="noreferrer">${esc(name(v))}</a>`:esc(name(v))}</td>
          <td>${v.chunks}</td><td class="muted">${(v.analyzers||[]).join(', ')}</td></tr>`).join('')}</table>`
     : '<div class="empty">None yet.</div>';
 }
@@ -704,29 +711,63 @@ function renderValue(v, depth=0){
 }
 
 /* ---------------- upload ---------------- */
+// The two sources are mutually exclusive, so filling one greys out the other
+// rather than leaving the user to guess which would win.
+function syncSource(){
+  const hasFile = $('uFile').files.length>0, hasUrl = $('uUrl').value.trim()!=='';
+  $('uUrl').disabled  = hasFile;
+  $('uFile').disabled = hasUrl;
+}
+
 async function doUpload(){
-  const file=$('uFile').files[0];
-  if(!file) return setStatus('status','Pick a video file first.','err');
+  const file=$('uFile').files[0], url=$('uUrl').value.trim();
+  if(!file && !url) return setStatus('status','Pick a video file or paste a URL.','err');
   const chosen=[...$('uAnalyzers').querySelectorAll('input:checked')].map(c=>c.value);
   if(!chosen.length) return setStatus('status','Pick at least one analyzer.','err');
-  const fd=new FormData(); fd.append('file',file); fd.append('analyzers',chosen.join(','));
-  const mode=$('uMode').value; fd.append('mode',mode);
-  if(mode==='preset')   fd.append('preset',$('uPreset').value);
-  if(mode==='interval') fd.append('interval',$('uInterval').value);
-  if(mode==='weights'){ fd.append('speaker',$('wSpeaker').value); fd.append('silence',$('wSilence').value);
-                        fd.append('cut',$('wCut').value); fd.append('semantic',$('wSemantic').value); }
-  fd.append('min_duration',$('uMin').value); fd.append('max_duration',$('uMax').value);
-  $('uBtn').disabled=true; setStatus('status','Uploading…');
-  // chunking + chunked, then analyse and index each analyzer, then aggregate.
-  const tracker = newTracker('uProgress', 2 + chosen.length*2 + AGG_COUNT);
+
+  const mode=$('uMode').value;
+  // One options object; the request encoding is the only thing that differs.
+  const opts={analyzers:chosen.join(','), mode,
+              min_duration:$('uMin').value, max_duration:$('uMax').value};
+  if(mode==='preset')   opts.preset=$('uPreset').value;
+  if(mode==='interval') opts.interval=$('uInterval').value;
+  if(mode==='weights'){ opts.speaker=$('wSpeaker').value; opts.silence=$('wSilence').value;
+                        opts.cut=$('wCut').value; opts.semantic=$('wSemantic').value; }
+
+  let request;
+  if(url){
+    request=['/videos/url',{method:'POST',headers:{'Content-Type':'application/json'},
+      // The URL form is typed, so the numeric fields have to arrive as numbers.
+      body:JSON.stringify({url, ...opts,
+        min_duration:+opts.min_duration, max_duration:+opts.max_duration,
+        ...(opts.interval!==undefined && {interval:+opts.interval}),
+        ...(mode==='weights' && {speaker:+opts.speaker, silence:+opts.silence,
+                                 cut:+opts.cut, semantic:+opts.semantic})})}];
+  }else{
+    const fd=new FormData(); fd.append('file',file);
+    for(const [k,v] of Object.entries(opts)) fd.append(k,v);
+    request=['/videos',{method:'POST',body:fd}];
+  }
+
+  $('uBtn').disabled=true; setStatus('status', url?'Fetching…':'Uploading…');
+  // fetching, chunking, chunked, then analyse and index each analyzer, then aggregate.
+  const tracker = newTracker('uProgress', 3 + chosen.length*2 + AGG_COUNT);
   try{
-    const res=await fetch('/videos',{method:'POST',body:fd});
+    const res=await fetch(...request);
     const data=await res.json();
-    if(!res.ok) throw new Error(data.detail||'upload failed');
+    if(!res.ok) throw new Error(detailText(data)||'upload failed');
     pollUpload(data.job_id, tracker);
   }catch(e){
     setStatus('status',e.message,'err'); trackerFinish(tracker,false,e.message); $('uBtn').disabled=false;
   }
+}
+
+// FastAPI returns a string for our own HTTPExceptions but a list of objects for
+// a request that failed validation; printing the latter raw gives "[object Object]".
+function detailText(data){
+  const d=data?.detail;
+  if(!d) return '';
+  return typeof d==='string' ? d : d.map(e=>`${(e.loc||[]).slice(1).join('.')}: ${e.msg}`).join('; ');
 }
 async function pollUpload(jobId, tracker){
   const job=await (await fetch(`/jobs/${jobId}`)).json();

@@ -1,30 +1,42 @@
-import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
-from .. import aggregators, analyzers, store
+from .. import aggregators, analyzers, store, storage
 from ..chunk import chunk_video
-from ..paths import RECORDS_DIR, UPLOAD_DIR, ensure as ensure_dirs
+from ..paths import RECORDS_DIR, ensure as ensure_dirs
 from ..vectordb import ChunkStore, config_key
 
 
-def video_id_for(video_path: str) -> str:
-    """Content-derived id.
+def validate_source(url: str) -> None:
+    """Reject a URL the fetcher will not accept, while a caller is still there
+    to be told. Ingest runs on a background thread, so anything not checked
+    here fails into a job the client has to poll to discover."""
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in storage.ALLOWED_SCHEMES:
+        raise ValueError(
+            f"Unsupported URL scheme {scheme or '(none)'!r}; expected http or https"
+        )
 
-    Not the filename stem: two different uploads both called `test.mp4` would
-    otherwise merge into one video's vectors.
+
+def resolve_source(source: str) -> dict:
+    """Turn whatever the caller supplied into a cached local file plus its
+    Storage identity.
+
+    A URL and a local path are the same thing to everything downstream, which
+    is why this returns one shape. The content hash inside it is the video id:
+    not the filename stem, because two different uploads both called `test.mp4`
+    would otherwise merge into one video's vectors.
     """
-    digest = hashlib.sha1()
-    with open(video_path, "rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()[:16]
+    if urlparse(source).scheme.lower() in storage.ALLOWED_SCHEMES:
+        return storage.fetch_source(source)
+    return storage.put_local(source)
 
 
 def upload(
-    video_path: str,
+    source: str,
     analyzer_ids: list[str] | None = None,
     preset: str | None = "audio_video",
     weights: dict[str, float] | None = None,
@@ -37,6 +49,9 @@ def upload(
 ) -> dict:
     """Chunk a video, run the chosen analyzers, and index the results.
 
+    `source` is an http(s) URL or a path on this machine; either way the video
+    ends up in Storage and the pipeline runs against a local cached copy.
+
     Chunking is one of three modes - `interval`, `weights`, or `preset` - see
     chunk_video. Analyzers are chosen per upload because they differ wildly in
     cost: the scene analyzer bills per chunk, transcription is free.
@@ -44,12 +59,16 @@ def upload(
     analyzer_ids = analyzer_ids or ["default_video"]
     analyzers.validate_selection(analyzer_ids)  # fail fast before doing any work
 
-    video_id = video_id_for(video_path)
-    cfg = config_key(preset, min_duration, max_duration, weights=weights, interval=interval)
-
     def report(stage, **info):
         if progress:
             progress(stage, info)
+
+    # Before chunking: a slow download of a large video is the one stage that
+    # can run for minutes with nothing to show for it.
+    report("fetching")
+    media = resolve_source(source)
+    video_id, video_path = media["video_id"], media["local_path"]
+    cfg = config_key(preset, min_duration, max_duration, weights=weights, interval=interval)
 
     report("chunking")
     chunks = chunk_video(
@@ -74,9 +93,17 @@ def upload(
     if existing and existing.get("chunk_config") == cfg:
         record = existing
         record["analyzers"] = sorted(set(record.get("analyzers", [])) | set(analyzer_ids))
+        # The same bytes can arrive under a different name or from a different
+        # URL; the object that is actually current wins.
+        record.update(
+            video_url=media["video_url"],
+            storage_path=media["storage_path"],
+            source_url=media.get("source_url"),
+            filename=media["filename"],
+        )
     else:
         record = store.build(
-            video_path, chunks, preset=preset,
+            media, chunks, preset=preset,
             min_duration=min_duration, max_duration=max_duration,
         )
         record["analyzers"] = list(analyzer_ids)
@@ -84,7 +111,6 @@ def upload(
         # describe anything that exists - drop all of them for this video.
         if existing:
             cs.delete_video(video_id)
-    record["video_id"] = video_id
     record["chunk_config"] = cfg
 
     indexed = {}
@@ -113,7 +139,9 @@ def upload(
                 )
 
             report("indexing", analyzer=analyzer_id)
-            indexed[analyzer_id] = cs.add_chunks(video_id, video_path, payload, analyzer_id, cfg)
+            indexed[analyzer_id] = cs.add_chunks(
+                video_id, media["video_url"], payload, analyzer_id, cfg
+            )
     finally:
         if owns_store:
             cs.close()
@@ -122,14 +150,16 @@ def upload(
     # grepping records to see what an upload produced. The id stays in the
     # filename so two videos with the same name cannot collide.
     ensure_dirs()
-    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(video_path).stem)[:48].strip("_")
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(media["filename"]).stem)[:48].strip("_")
     for stale in RECORDS_DIR.glob(f"*__{video_id[:8]}.json"):
         stale.unlink()
     store.save(record, str(RECORDS_DIR / f"{stem}__{video_id[:8]}.json"))
 
     result = {
         "video_id": video_id,
-        "video_path": video_path,
+        "video_url": media["video_url"],
+        "storage_path": media["storage_path"],
+        "filename": media["filename"],
         "chunk_config": cfg,
         "chunks": len(chunks),
         "indexed": indexed,
@@ -154,7 +184,8 @@ def list_videos() -> list[dict]:
         out.append(
             {
                 "video_id": record.get("video_id", path.stem),
-                "video": record.get("video"),
+                "filename": record.get("filename"),
+                "video_url": record.get("video_url"),
                 "chunks": len(record.get("chunks", [])),
                 "chunk_config": record.get("chunk_config"),
                 "analyzers": record.get("analyzers", []),
@@ -177,24 +208,25 @@ def record_path_for(video_id: str) -> Path | None:
     return None
 
 
-def video_path_for(video_id: str) -> str | None:
-    """Resolve an ingested video's file path from its saved record.
+def video_url_for(video_id: str) -> str | None:
+    """The public Storage URL for an ingested video, for /media to redirect to."""
+    path = record_path_for(video_id)
+    if path is None:
+        return None
+    return json.loads(path.read_text(encoding="utf-8")).get("video_url")
 
-    Records store the path used at upload time, which stops resolving if the
-    data directory is moved or the app is run from elsewhere. The filename is
-    the stable part, so fall back to looking it up in the current upload
-    directory rather than reporting the video as missing.
+
+def video_path_for(video_id: str) -> str | None:
+    """A local file for an ingested video, downloading it back if the cache is cold.
+
+    Nothing stores a local path any more - it is derived from the content hash
+    every time - so this no longer has to guess where a moved file went.
     """
     path = record_path_for(video_id)
     if path is None:
         return None
-    stored = json.loads(path.read_text(encoding="utf-8")).get("video")
-    if not stored:
-        return None
-    if Path(stored).exists():
-        return stored
-    relocated = UPLOAD_DIR / Path(stored.replace("\\", "/")).name
-    return str(relocated) if relocated.exists() else stored
+    record = json.loads(path.read_text(encoding="utf-8"))
+    return storage.local_path_for(video_id, record.get("storage_path"))
 
 
 def _timecode(seconds: float) -> str:
@@ -248,7 +280,7 @@ def _shape(hit: dict, detail: str) -> dict:
         return base
 
     base.update({
-        "video_path": hit["video_path"],
+        "video_url": hit.get("video_url"),
         # `text` is the whole flattened record that was embedded - the UI
         # renders `description`, so carrying both doubles the response for
         # nothing. It returns at detail="full".
@@ -309,7 +341,7 @@ def run_aggregators(
     cs = chunk_store or ChunkStore()
     owns_store = chunk_store is None
     ctx = aggregators.AggregateContext(
-        record=record, video_path=record["video"], store=cs,
+        record=record, store=cs,
         results=dict(record.get("aggregates", {})),
     )
 
@@ -375,7 +407,10 @@ def get_video(video_id: str) -> dict | None:
     chunks = record.get("chunks", [])
     return {
         "video_id": record.get("video_id"),
-        "video": record.get("video"),
+        "filename": record.get("filename"),
+        "video_url": record.get("video_url"),
+        "storage_path": record.get("storage_path"),
+        "source_url": record.get("source_url"),
         "preset": record.get("preset"),
         "params": record.get("params", {}),
         "chunk_config": record.get("chunk_config"),

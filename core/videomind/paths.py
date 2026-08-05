@@ -15,8 +15,18 @@ ROOT = Path(os.environ.get("VIDEOMIND_ROOT", Path(__file__).resolve().parent.par
 DATA_DIR = Path(os.environ.get("VIDEOMIND_DATA", ROOT / "data"))
 
 RECORDS_DIR = Path(os.environ.get("VIDEOMIND_RECORDS", DATA_DIR / "records"))
-UPLOAD_DIR = Path(os.environ.get("VIDEOMIND_UPLOADS", DATA_DIR / "uploads"))
 VECTOR_DIR = Path(os.environ.get("VIDEOMIND_VECTORDB", DATA_DIR / "vectordb"))
+
+# Files posted to the API as multipart, on their way to Storage. Kept after the
+# upload rather than deleted: this is where a "what did I actually send?"
+# question gets answered.
+UPLOAD_DIR = Path(os.environ.get("VIDEOMIND_UPLOADS", DATA_DIR / "uploads"))
+
+# Videos pulled back out of Storage to be decoded, keyed by content hash.
+# Regenerable - deleting it costs a re-download, never data. Every analyzer
+# re-opens the video and frames.py seeks per chunk, so decoding straight from
+# a URL would pay the network for what is meant to be a local seek.
+CACHE_DIR = Path(os.environ.get("VIDEOMIND_CACHE", DATA_DIR / "cache"))
 
 # Read-only test assets, kept out of DATA_DIR so a reset never deletes them.
 MEDIA_DIR = Path(os.environ.get("VIDEOMIND_MEDIA", ROOT / "media"))
@@ -30,5 +40,5 @@ STATIC_DIR = Path(__file__).resolve().parent / "api" / "static"
 
 def ensure() -> None:
     """Create the writable directories if they are missing."""
-    for directory in (DATA_DIR, RECORDS_DIR, UPLOAD_DIR, MODEL_DIR):
+    for directory in (DATA_DIR, RECORDS_DIR, UPLOAD_DIR, CACHE_DIR, MODEL_DIR):
         directory.mkdir(parents=True, exist_ok=True)

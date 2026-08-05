@@ -13,9 +13,21 @@ class AggregateContext:
     """
 
     record: dict
-    video_path: str
     results: dict[str, Any] = field(default_factory=dict)  # aggregates already computed
     store: Any = None  # ChunkStore, for aggregators that read stored vectors
+
+    @property
+    def video_path(self) -> str:
+        """A local copy of the video, fetched from Storage on first access.
+
+        Resolved lazily and not in the constructor: no aggregator currently
+        opens the video, and re-running the twelve of them on a cold cache
+        should not pay for a download that nothing reads. The property is kept
+        so one that does need pixels still has a path to work with.
+        """
+        from .. import storage
+
+        return storage.local_path_for(self.video_id, self.record.get("storage_path"))
 
     def chunks(self, analyzer_id: str | None = None) -> list[dict]:
         """Chunks, optionally only those with a given analyzer's output."""

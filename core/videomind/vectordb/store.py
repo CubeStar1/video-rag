@@ -177,7 +177,7 @@ class ChunkStore:
     def add_chunks(
         self,
         video_id: str,
-        video_path: str,
+        video_url: str,
         chunks: list[dict],
         extractor_id: str,
         chunk_config: str,
@@ -215,7 +215,7 @@ class ChunkStore:
             text = fields["combined"]
             payload = {
                 "video_id": video_id,
-                "video_path": video_path,
+                "video_url": video_url,
                 "extractor_id": extractor_id,
                 "chunk_config": chunk_config,
                 "chunk_id": chunk.get("id"),
