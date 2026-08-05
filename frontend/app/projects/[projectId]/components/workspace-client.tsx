@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowUp, Loader2, PanelLeft, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -187,6 +188,7 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
 
         <MediaGrid
           videos={videos}
+          projectId={project.id}
           isLoading={isLoading}
           onPreview={setPreview}
           onUpload={() => setUploadOpen(true)}
@@ -224,6 +226,14 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
             <span>·</span>
             <span className="capitalize">{preview?.status}</span>
             {preview?.error && <span className="truncate text-red-500">{preview.error}</span>}
+            {preview && (
+              <Link
+                href={`/projects/${project.id}/videos/${preview.id}`}
+                className="ml-auto font-medium text-foreground hover:underline"
+              >
+                View full analysis →
+              </Link>
+            )}
           </div>
         </DialogContent>
       </Dialog>

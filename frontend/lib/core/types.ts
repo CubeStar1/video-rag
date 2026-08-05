@@ -229,6 +229,31 @@ export interface EntitiesResponse {
   }[]
 }
 
+/**
+ * Everything core holds about one video, in one payload: the row, core's own
+ * metadata, every chunk with every analyzer's output on it, and every
+ * video-level aggregate.
+ *
+ * Deliberately not the same call as `/timeline`. That one flattens core's
+ * output into four display lanes and drops whatever does not fit; this keeps
+ * the shapes core actually returns, because the detail page exists to show
+ * exactly what was stored.
+ */
+export interface VideoDetails {
+  video: ProjectVideo
+  /** Null when core is unreachable or has never seen this video. */
+  core: CoreVideo | null
+  chunks: ChunkOut[]
+  /** What core reports it holds — larger than `chunks.length` if paging was capped. */
+  chunk_total: number
+  /** Aggregator id → its stored result. Absent ids never ran or were skipped. */
+  aggregates: Record<string, unknown>
+  /** Aggregator ids core says are stored for this video. */
+  available: string[]
+  /** Per-source failures; the page renders whatever did load. */
+  errors: string[]
+}
+
 export interface CapabilitiesResponse {
   analyzers: AnalyzerId[]
   fields: string[]
