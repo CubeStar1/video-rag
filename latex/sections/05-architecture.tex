@@ -89,64 +89,22 @@ Client & \texttt{content/docs/} & The MDX documentation site: concepts, workspac
 \end{tabularx}
 \end{table}
 
-\subsection{Pipeline Phases}
+\subsection{Ingestion Lifecycle}
 
-\begin{table}[htbp]
-\centering
-\small
-\begin{tabularx}{\textwidth}{@{}L{2.4cm}L{4.2cm}X@{}}
-\toprule
-\textbf{Phase} & \textbf{Input $\rightarrow$ Output} & \textbf{Processing} \\
-\midrule
-Ingestion & Video file or URL $\rightarrow$ chunk spans &
-Content-hash identity, upload to object storage, local cache, poster frame; four
-boundary detectors run; weighted fusion selects cut points; spans merged and split to
-the configured duration bounds. \\
-Analysis & Chunk spans $\rightarrow$ structured records &
-Selected analyzers run per chunk, each with its own frame sampler and prompt.
-Inexpensive detectors gate the expensive vision--language calls. \\
-Indexing & Records $\rightarrow$ vectors and aggregates &
-Text embedded locally into five named vectors, one point per chunk with a filterable
-payload; twelve video-level aggregators run in dependency order over the saved
-records. \\
-Querying & Query or question $\rightarrow$ ranked moments or cited answer &
-Vector search with typed filters and selectable detail; questions routed to the
-aggregates capable of answering them; synthesis with mandatory timecode citations. \\
-Delivery & Results $\rightarrow$ client artifacts &
-Cited answers, ranked moments with playable time ranges, chapters and event timeline,
-entity timelines and co-occurrence, statistics, novelty and sentiment. \\
-\bottomrule
-\end{tabularx}
-\end{table}
+Ingestion is asynchronous. The service accepts a file or a link, returns immediately
+with a job identifier, and processes the recording on a background thread through the
+stages specified in Section~5. The job reports its stage --- fetching, chunking,
+analyzing, indexing, aggregating, complete --- and the client polls it, reconciling the
+result into the recording's row. Because jobs are held in memory, a restart mid-ingest
+is detected by the client, which either recovers the recording from its persisted
+records or fails the row explicitly so that re-indexing becomes the route forward.
 
-\subsection{Data Model}
+\subsection{Persistence}
 
-Application state is held in Postgres and is distinct from the analysis service's own
-records, which are stored on disk and in the vector database.
-
-\begin{table}[htbp]
-\centering
-\small
-\begin{tabularx}{\textwidth}{@{}L{2.9cm}X@{}}
-\toprule
-\textbf{Relation} & \textbf{Purpose} \\
-\midrule
-\texttt{projects}      & A named grouping of recordings, owned by one account. \\
-\texttt{video\_core}   & The application's view of one recording: title, source, the analysis service's content-hash identifier, playback and poster URLs, ingest lifecycle state, the configuration the pipeline was asked for, and the analyzers and aggregates it actually produced. \\
-\texttt{conversations} & An agent conversation, optionally attached to a project. \\
-\texttt{messages}      & The persisted turns of a conversation, including tool calls and artifacts. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-Three properties of \texttt{video\_core} are load-bearing. The analysis service's
-identifier is the content hash of the bytes, so the same file added to two projects
-yields the same identifier; uniqueness is therefore declared per project rather than
-globally. The ingest configuration is retained verbatim so that a re-index can replay
-it. The analyzers actually produced are stored as an array rather than as an opaque
-document, because both the interface and the agent evaluate ``does this recording have
-people analysis?'' as a predicate. Row-level security restricts every row to the
-account that owns it.
+State is divided across four stores: a relational database for application state, object
+storage for media, a document store on disk for analyzer and aggregator output, and a
+vector store for retrieval. The division, the schema of each store and the identity that
+joins them are specified in Section~7.
 
 \subsection{Technology Stack}
 

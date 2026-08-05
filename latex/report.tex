@@ -1,9 +1,10 @@
 % FalconVQA — Software Design Document
 %
 % Main file. Packages and styling live in preamble.tex; each section is its own
-% file under sections/. To reorder the report, reorder the \input lines below.
-% To work on one section alone, comment the others out --- numbering and the
-% table of contents adjust on their own.
+% file under sections/. The \input order below --- not the filename prefix ---
+% is what sets section numbering, so to reorder the report, reorder these lines.
+% To work on one section alone, comment the others out; numbering and the table
+% of contents adjust on their own.
 
 \documentclass[11pt,a4paper]{article}
 
@@ -33,7 +34,13 @@
 \input{sections/04-enhancements}
 
 \clearpage
+\input{sections/05-design}
+
+\clearpage
 \input{sections/05-architecture}
+
+\clearpage
+\input{sections/07-database}
 
 \clearpage
 \input{sections/06-ui-acceptance}

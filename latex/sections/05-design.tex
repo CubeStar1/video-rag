@@ -1,0 +1,448 @@
+\section{Detailed Design of the Processing Pipeline}
+
+This section specifies each of the four pipeline stages in turn: the models employed,
+the parameters governing them, and the output each stage produces for the next. Every
+numeric value given is the value in the implementation.
+
+% =============================================================================
+\subsection{Stage 1 --- Chunking}
+
+\subsubsection*{Purpose and inputs}
+
+The stage receives a decoded video file and produces an ordered list of non-overlapping
+time spans covering the recording. Audio is decoded once with PyAV into a mono waveform,
+from which the duration is derived; the video stream is read separately by the visual
+detectors.
+
+\subsubsection*{Boundary detectors}
+
+Four detectors run once per recording. Each returns a list of
+(time, strength) events, where the strength lies in $[0,1]$.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{1.9cm}L{3.5cm}XL{2.5cm}@{}}
+\toprule
+\textbf{Signal} & \textbf{Model / algorithm} & \textbf{Event derivation} & \textbf{Strength} \\
+\midrule
+Speaker change & \texttt{pyannote/speaker-\allowbreak diarization-\allowbreak community-1} (gated, requires a Hugging Face token) &
+The waveform is diarized into speaker turns; a boundary is emitted at the midpoint
+between two consecutive turns whose speaker label differs. &
+Constant $1.0$. A detected speaker change is a binary, high-confidence event. \\
+Silence & Silero VAD v6 &
+Speech timestamps are returned for the whole track; a boundary is emitted at the
+midpoint of every gap between speech segments longer than $0.05$\,s, including the
+trailing gap. &
+$\min(1,\, g/2.0)$ for a gap of $g$ seconds, saturating at two seconds. \\
+Hard cut & PySceneDetect \texttt{ContentDetector}; purely algorithmic frame differencing, no model weights &
+A boundary is emitted at the start of every scene after the first. &
+Constant $1.0$. The detector applies its own threshold, so any report is confident. \\
+Semantic drift & OpenCLIP ViT-B/32, OpenAI weights, frames sampled at 1\,fps &
+Consecutive sampled frames are embedded and compared; a boundary is emitted at each
+midpoint with raw strength $1-\cos(e_i, e_{i+1})$. &
+Rescaled by the clip's own largest jump, so the strongest semantic change is placed on
+equal footing with a speaker change or a cut. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The rescaling applied to the semantic signal is necessary because CLIP similarity drifts
+continuously and rarely approaches zero even at a genuine scene change; without it the
+signal would be permanently diluted relative to the sparse, unit-strength detectors.
+
+Frames for the semantic detector are read by walking the container forward with
+\texttt{grab()}/\texttt{retrieve()} rather than seeking to each timestamp. Per-frame
+seeking forces the H.264 decoder to restart from a keyframe and was measured at
+approximately $22\times$ the cost per frame.
+
+\subsubsection*{Fusion}
+
+Weights are first renormalised over the signals that produced at least one event, so
+that a preset expresses \emph{which signals matter} rather than acting as a granularity
+dial (Section~4, E-1). Each event then contributes a Gaussian bump to a score curve
+evaluated on a grid of resolution $0.1$\,s over the recording:
+
+\[
+S(t) \;=\; \sum_{s \in S} \; \sum_{(t_i,\, a_i) \in E_s}
+w_s \, a_i \, \exp\!\left(-\frac{(t - t_i)^2}{2\sigma^2}\right),
+\qquad \sigma = 1.0\ \mathrm{s}
+\]
+
+Here $S$ is the set of signals, $E_s$ the events emitted by signal $s$, $w_s$ its
+renormalised weight, $a_i$ the strength of event $i$, and $\sigma$ the width of the
+Gaussian kernel.
+
+Boundaries agreed upon by several detectors therefore reinforce one another. Peaks are
+selected greedily in descending order of $S(t)$, subject to a score floor of $0.12$ and
+a minimum separation of $2.0$\,s between accepted boundaries, which prevents runs of
+adjacent micro-chunks.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.6cm}cccc X@{}}
+\toprule
+\textbf{Preset} & \textbf{speaker} & \textbf{silence} & \textbf{cut} & \textbf{semantic} & \textbf{Intended footage} \\
+\midrule
+\texttt{audio}       & 0.35 & 0.35 & 0.15 & 0.15 & Dialogue-led recordings \\
+\texttt{video}       & 0.15 & 0.15 & 0.35 & 0.35 & Edited or visually varied footage \\
+\texttt{audio\_video} & 0.25 & 0.25 & 0.25 & 0.25 & Default; all four signals equally \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection*{Modes and post-processing}
+
+Three mutually exclusive modes are exposed. In \texttt{preset} mode a named weighting is
+used; in \texttt{weights} mode the caller supplies its own, validated against the four
+signal names and required to be non-zero in at least one; in \texttt{interval} mode the
+recording is cut into fixed spans of $N$ seconds and no detector runs at all.
+
+For the two weighted modes, a span of length $d$ longer than the maximum duration
+$D_{\max}$ is divided into $\lceil d / D_{\max} \rceil$ equal parts --- equal division
+rather than truncation, so that no negligible trailing fragment is produced --- and a
+span shorter than the minimum duration is merged forward into its successor, with a
+short final span folded back into the preceding one. The API defaults are $5$\,s and
+$20$\,s.
+Duration bounds are deliberately \emph{not} applied in \texttt{interval} mode, since the
+caller requested exact spans.
+
+\subsubsection*{Output}
+
+An ordered list of (start, end) spans, together with a chunk
+configuration key that identifies the scheme that produced them --- for example
+\texttt{audio\_video:5-20} or \texttt{interval:10}. Custom weightings are hashed into
+the key so that two different weightings sharing the same duration bounds cannot
+collide. This key is carried on every downstream vector, which is what permits two
+chunkings of one recording to coexist.
+
+% =============================================================================
+\subsection{Stage 2 --- Analysis}
+
+\subsubsection*{Purpose and inputs}
+
+Each selected analyzer receives the chunk spans and a video context that provides
+frames and audio on demand. Every analyzer owns its own frame sampling, its own prompt
+and its own output schema, and is registered by identifier; nothing in ingestion,
+storage or the API names a specific analyzer.
+
+\subsubsection*{Common sampling strategy}
+
+The frame-selecting analyzers share a three-part strategy. Candidate frames are drawn
+at a low fixed rate; near-duplicates are removed by comparing OpenCLIP embeddings
+against the last frame retained; and the survivors are thinned to a per-analyzer
+maximum. The scene analyzer derives its similarity threshold adaptively, as the
+40th percentile of consecutive-frame similarity within the chunk, capped at
+$0.98$. The cap is load-bearing: on a static chunk the percentile lands on the median,
+measured at $0.9955$, and distinct frames are then mined out of compression noise. The
+detector-gated analyzers instead use a fixed similarity threshold together with a
+layout-change test, because a person or object entering or leaving the frame is a
+change the whole-image comparison does not register.
+
+All frames selected for a chunk are sent in a single request, so that the model sees
+the chunk as a continuous sequence and can describe movement across it rather than
+judging each frame in isolation. Sampling is serial, because the CLIP model is shared
+on one GPU; the API calls are I/O-bound and run across six worker threads.
+
+\subsubsection*{Analyzers, models and outputs}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.2cm}L{3.5cm}X@{}}
+\toprule
+\textbf{Analyzer} & \textbf{Models and gating} & \textbf{Structured output} \\
+\midrule
+\texttt{default\_video} &
+Candidates at 2\,fps; OpenCLIP ViT-B/32 deduplication (adaptive threshold, cap $0.98$);
+4--8 frames retained, thinned against evenly spaced points in \emph{time}; VLM
+\texttt{gpt-5.4-mini} at 768\,px. &
+Schema \texttt{scene\_description}: \texttt{description} (the prose users search
+against), \texttt{setting}, \texttt{people[]}, \texttt{objects[]}, \texttt{actions[]},
+\texttt{tags[]}. The timestamps of the frames used are recorded alongside for
+traceability. \\
+\texttt{people} &
+YOLO11n gate at 1\,fps, confidence $0.35$; person boxes below $900$\,px$^2$ discarded;
+identifiers assigned by overlap tracking across \emph{all} candidate frames, then read
+off for the frames actually sent; up to 6 frames annotated with numbered yellow boxes;
+VLM at 1280\,px, \texttt{detail=high}. &
+Schema \texttt{people\_reading}: per person \texttt{box\_id}, \texttt{appearance},
+\texttt{clothing}, \texttt{role}, \texttt{action}, plus a \texttt{summary}. Each person
+is post-processed with \texttt{locations} --- the timestamp and box in every frame they
+appear in --- and a \texttt{people\_count} is recorded. \\
+\texttt{object\_\allowbreak detection} &
+Shares the same YOLO11n pass rather than repeating it; frames annotated with cyan
+\emph{unlabelled} boxes; up to 6 frames; VLM at 1280\,px, \texttt{detail=high}. &
+Schema \texttt{object\_reading}: \texttt{detections[]} of \texttt{object},
+\texttt{description} (colour, material, size, condition) and \texttt{context} (what it
+is being used for, and by whom), plus a \texttt{summary}. Plain object names are
+extracted into a filterable list; the detector's own labels are retained only for
+debugging. \\
+\texttt{ocr} &
+EasyOCR \emph{detection} stage only --- its recognition stage is skipped, as it
+fragments lines and reads low-contrast overlays poorly; frames annotated with red
+boxes; similarity threshold $0.985$ plus a text-layout change test; VLM at 1600\,px,
+\texttt{detail=high}. &
+Schema \texttt{ocr\_reading}: \texttt{texts[]} of \texttt{text} (verbatim, with case and
+punctuation) and \texttt{context} (what the text is and where it appears), plus a
+\texttt{summary}. \\
+\texttt{transcript} &
+faster-whisper (\texttt{tiny}); language detected once over the whole track and pinned
+for every chunk. &
+One plain-text transcription per chunk. \\
+\texttt{diarization} &
+pyannote over the whole track once, memoised; faster-whisper segments per chunk;
+speaker assigned by largest temporal overlap between a Whisper segment and a pyannote
+turn. &
+\texttt{turns[]} of \texttt{speaker}, \texttt{start}, \texttt{end}, \texttt{text} with
+consecutive same-speaker segments merged, plus a rendered \texttt{text}, a
+speaker-free \texttt{plain} form, and the \texttt{speakers} present. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The vision--language model is invoked with OpenAI strict structured output, so every
+required property is present and no additional properties are returned; downstream
+stages therefore never parse prose.
+
+Two design rules apply across the table. First, whole-track passes are performed once
+and memoised: a per-chunk diarization pass would label the same person
+\texttt{SPEAKER\_00} in one chunk and \texttt{SPEAKER\_01} in the next, and per-segment
+language detection produced fluent German from an English clip. Second,
+\texttt{transcript} and \texttt{diarization} are mutually exclusive and the API enforces
+this, because their embedded vectors were measured cosine-identical at $1.0000$ ---
+diarization is a strict superset.
+
+\subsubsection*{Gating and cost}
+
+Where an analyzer's gate finds nothing --- no person above the area threshold, no object
+detection, no text region --- the chunk yields no output and no API call is made at all.
+A frame that survives is downscaled to the analyzer's width and JPEG-encoded before
+transmission, since vision tokens are priced by resolution.
+
+% =============================================================================
+\subsection{Stage 3 --- Indexing and Aggregation}
+
+\subsubsection*{Embedding}
+
+Every analyzer implements \texttt{render\_fields}, which flattens its output into a map
+of named vector space to text. Five spaces are defined --- \texttt{combined},
+\texttt{description}, \texttt{people}, \texttt{actions}, \texttt{objects} --- of which
+\texttt{combined} must always be present. A space is \emph{omitted} rather than emitted
+empty, so a chunk in which the model saw nobody is simply not a candidate in a
+people-scoped search.
+
+Text is embedded locally with \texttt{BAAI/bge-small-en-v1.5} through
+sentence-transformers, producing normalised vectors compared by cosine distance. The
+model family was trained with an instruction prefix on the query side only, so queries
+are prefixed with \emph{``Represent this sentence for searching relevant passages:''}
+and documents are not; applying the prefix to both, or to neither, measurably degrades
+recall. All fields of all chunks are embedded in one batched GPU pass and then
+scattered back to their (chunk, field) slots.
+
+\subsubsection*{Vector store}
+
+One Qdrant point is written per chunk per analyzer, carrying all five named vectors.
+Because the point is the unit, a limit of ten returns ten chunks, the payload is stored
+once, and a filter is applied once. The point identifier is a deterministic UUID derived
+from
+\texttt{sha1(video\_id\,|\,analyzer\_id\,|\,start\,|\,end\,|\,chunk\_config)}, keyed on
+the time span rather than a positional index --- chunk 12 of one chunking run is a
+different moment from chunk 12 of another, so a positional identifier would silently
+rebind a vector to the wrong timeframe. Re-ingesting the same chunk therefore upserts
+rather than duplicating.
+
+The payload carries everything required to cite and render a moment without joining back
+to disk: the video identifier and playback URL, the analyzer, the chunk configuration
+and identifier, the time span, the combined text and description, the setting, the
+people, objects, actions and tags, the speakers and their turns, the read texts, the
+object detections, the full per-person records, and the person count. Twelve payload
+fields are declared as indexes, and twelve named filters are defined in a single filter
+specification --- video, chunk and analyzer identifiers, chunk configuration, objects,
+tags, speakers, people, minimum and maximum person count, and time bounds. Filters are
+validated against that specification and an unknown name raises an error with the
+nearest suggestion, because a silently ignored filter returns plausible but wrong
+results.
+
+\subsubsection*{Aggregators}
+
+Twelve aggregators run over the saved analyzer records, in an order derived from their
+declared dependencies. A dependency naming an analyzer is a requirement on the
+recording, and an aggregator whose analyzer is absent is dropped rather than run against
+nothing. Five of the twelve incur API calls; the remainder are free, which is what makes
+re-running them on demand practical.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.3cm}L{2.6cm}L{2.9cm}X@{}}
+\toprule
+\textbf{Aggregator} & \textbf{Depends on} & \textbf{Model} & \textbf{Output} \\
+\midrule
+\texttt{stats} & --- & None; arithmetic &
+Duration, chunk count, person count series with minimum, maximum, mean, busiest and
+quietest spans; object frequencies; word count, spoken seconds and speech ratio. \\
+\texttt{novelty} & --- & None; reuses stored vectors &
+Cosine distance of each chunk's \texttt{combined} vector from the normalised centroid of
+the recording, ranked; outliers are those beyond two standard deviations, so
+``unusual'' scales with how varied the recording itself is. \\
+\texttt{speaker\_stats} & \texttt{diarization} & None; arithmetic &
+Per speaker: seconds, turns, words, share of speech, longest turn and chunks. Plus
+handover count, dominant speaker and a turn timeline. \\
+\texttt{summary} & --- & LLM &
+A hierarchy built by repeated halving. Depth is derived from chunk count --- enough
+halvings for a leaf to cover at most five chunks, bounded to between three and six tiers
+--- so that leaf granularity does not vary with recording length. Leaves are summarised
+from chunk text and every tier above merges its children, making the whole-recording
+summary a reduction rather than one enormous prompt. Emits \texttt{summary},
+\texttt{key\_points[]}, \texttt{topics[]}, the full tier hierarchy, and the finest tier
+as \texttt{sections} for retrieval. \\
+\texttt{chapters} & --- & LLM &
+Runs of consecutive chunks grouped into named sections with a title and one-sentence
+summary. Chapters must be consecutive, non-overlapping and exhaustive; any chapter
+referencing a chunk identifier that does not exist is discarded. \\
+\texttt{events} & --- & LLM &
+Discrete, chunk-anchored occurrences: \texttt{event}, \texttt{chunk\_id},
+\texttt{actor}, \texttt{category}, resolved to real time spans and counted by category.
+Ongoing background activity is explicitly excluded. \\
+\texttt{ner} & --- & GLiNER \texttt{urchade/\allowbreak gliner\_small-v2.1}, zero-shot, threshold $0.5$ &
+Named entities over descriptions, on-screen text and speech across ten configurable
+labels. Pronouns and bare determiners are excluded by a stop list, as they are
+grammatically entities but identify nobody and would dominate a mention count. Emits
+entities with mention counts, scores and chunk identifiers, grouped by label. \\
+\texttt{sentiment} & \texttt{diarization} (falls back to \texttt{transcript}) & \texttt{cardiffnlp/\allowbreak twitter-roberta-\allowbreak base-sentiment-latest} &
+A per-turn timeline, per-speaker distribution with dominant label and negative share,
+and an overall distribution. Run on speech only, and reported as sentiment of language
+observed rather than emotion inferred. \\
+\texttt{entities} & \texttt{people} & BGE embeddings and constrained clustering, then LLM narratives &
+Person observations linked into individuals. See below. \\
+\texttt{object\_entities} & \texttt{object\_detection} & The same clusterer, plus lexical filters &
+Object sightings linked into individual objects. Static fixtures are counted but not
+tracked, and person-like detections are handed to the people aggregator. \\
+\texttt{entity\_timelines} & \texttt{entities} & None &
+Per person: first and last sighting, total span, \emph{observed} presence summed over
+sighting spans rather than first-to-last, appearance count and spans. \\
+\texttt{cooccurrence} & \texttt{entities} & None &
+Pairs of people sharing a chunk with their counts, people per chunk, and the objects
+present. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection*{Entity linking in detail}
+
+Identity is decided by embedding and clustering, not by asking a model to match people.
+Measured on this footage, provably different people --- co-visible within one chunk, so
+they cannot be the same --- reached $0.941$ similarity, while known-same pairs sat
+between $0.889$ and $0.915$. Those bands overlap, so no threshold alone is sufficient
+and the constraints carry the weight. The procedure is:
+
+\begin{enumerate}[leftmargin=1.6em]
+  \item \textbf{Signature construction.} The signature is the \texttt{clothing} field
+        alone. Blending in \texttt{appearance} dragged same-person scores down to
+        $0.69$--$0.87$, because that field drifts between chunks and occasionally
+        carries meta-commentary that the embedding treats as content.
+  \item \textbf{Within-chunk merge.} Observations in the same chunk above a similarity
+        of $0.95$ --- above the measured co-visible ceiling --- are merged first. The
+        analyzer's own tracker loses a person who moves between sampled frames, and
+        without this step the cannot-link constraint would permanently forbid reuniting
+        them.
+  \item \textbf{Distinctness gate.} Each observation's mean similarity to all others is
+        computed. Anything at or above $0.80$ describes half the recording and
+        identifies nobody, so its owner is left unlinked rather than merged into
+        whichever cluster it drifted closest to.
+  \item \textbf{Constrained agglomeration.} Pairs above $0.88$, drawn from different
+        chunks and both distinctive, are merged greedily in descending order of
+        similarity. A merge is rejected if the two clusters share any chunk, since that
+        would place one person in two places at once.
+  \item \textbf{Narration.} Only then is an LLM used, and only for people seen more
+        than once, capped at twelve narratives per recording. It produces a one-line
+        recognition description, an ordered account of what the person did, and an
+        apparent role.
+\end{enumerate}
+
+Object linking reuses the same routine on a source where identity is inherently weaker
+--- two shopping carts genuinely look alike where two people rarely wear the same
+clothes --- so the distinctness gate does most of the work.
+
+% =============================================================================
+\subsection{Stage 4 --- Retrieval and Question Answering}
+
+\subsubsection*{Search}
+
+A search embeds the query with the query-side prefix, selects one of the five named
+vector spaces, applies the validated filter set, and returns ranked chunks with their
+time spans and payloads. Two parameters deserve note.
+
+\emph{Score threshold.} Cosine similarity always ranks something, so a query for content
+a recording does not contain still returns its nearest neighbours. A score threshold is
+what makes ``no match'' expressible. On this data, content actually present scored
+$\geq 0.665$ and absent content $\leq 0.524$, so a threshold of approximately
+$0.55$--$0.60$ separates them; the value is specific to the embedding model and is
+retuned if the model changes.
+
+\emph{Detail level.} Three levels are offered --- \texttt{minimal}, \texttt{standard}
+and \texttt{full}. Five full hits were measured at approximately $19{,}000$ tokens
+against approximately $440$ at \texttt{minimal}. The interface requests the whole
+record; an agent, which pays per token, requests less.
+
+\subsubsection*{Question routing}
+
+A question is not answered by searching chunks and hoping. Each aggregate carries a
+hint --- a short description, written in the vocabulary a question would use, of what
+that aggregate is good for. The hints are embedded and compared against the question,
+and the aggregates standing at least one standard deviation above the mean score for
+that question are selected, capped at three. If nothing stands out, the single
+best-matching aggregate is used, so a broad question is answered from the strongest
+match rather than from nothing.
+
+Relative selection is used because absolute thresholds do not survive contact with real
+questions: the score distribution shifts per question, with means between $0.47$ and
+$0.56$ measured here, so any single cutoff either admits everything or nothing. The
+ranking, however, is reliable. Because routing is by embedded description rather than by
+keyword, a new aggregator joins by adding one line of hint text, and unanticipated
+phrasings degrade gracefully.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.9cm}X@{}}
+\toprule
+\textbf{Aggregate} & \textbf{Questions it is routed} \\
+\midrule
+\texttt{entities}        & What a particular person did; someone identified by clothing or appearance; following one individual; how long a person stayed. \\
+\texttt{novelty}         & Which segment is unusual, anomalous or out of the ordinary; what stands out. \\
+\texttt{stats}           & How many people were present; how busy or crowded; the busiest or quietest moment; counts and totals. \\
+\texttt{events}          & What happened and when; arrivals, departures and transactions in time order. \\
+\texttt{chapters}        & The structure of the footage; what sections it has; what the recording is about overall. \\
+\texttt{speaker\_stats}  & Who talked most; how many speakers; speaking time, turns and interruptions. \\
+\texttt{sentiment}       & The tone of what was said aloud; whether spoken language was positive, negative or neutral. \\
+\texttt{ner}             & Named things mentioned: brands, organisations, places, names, dates and amounts. \\
+\texttt{object\_entities}& A particular object followed through the footage; what an item was used for over time. \\
+\texttt{cooccurrence}    & Which people appeared together; who was accompanied by whom. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection*{Context assembly and synthesis}
+
+The routed aggregates are rendered into labelled blocks, each carrying explicit
+timecodes. The overall summary is always included, together with the four summary
+sections closest to the question and, where entities were routed, the four people whose
+descriptions best match it. Matching chunks from vector search are appended last. The
+response records which aggregates were routed to and how much of each was used, so an
+answer can be traced to its sources.
+
+The synthesis prompt constrains the model to the supplied material, requires every claim
+to carry a \texttt{[video\_id start-end]} citation drawn from the timecodes given, and
+directs it to state plainly that the material does not support an answer rather than
+guessing (NFR-5).
+
+\subsubsection*{Output to the client}
+
+The stage returns cited answers with timecodes, ranked moments with playable time ranges
+and playback URLs, and --- from the aggregates --- chapters, the event timeline, entity
+timelines, co-occurrence, statistics, novelty and sentiment. A moment is delivered as a
+range over a recording rather than as a rendered file, so several moments drawn from one
+recording share a single media load in the client.

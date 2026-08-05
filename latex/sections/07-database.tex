@@ -1,0 +1,408 @@
+\section{Database Design}
+
+\subsection{Storage Strategy}
+
+Persistence is divided across four stores rather than one. The division is deliberate:
+the three kinds of state the system holds have incompatible access patterns, and forcing
+them into a single store would compromise all three.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.1cm}L{3.2cm}XL{1.9cm}@{}}
+\toprule
+\textbf{Store} & \textbf{Technology} & \textbf{Contents} & \textbf{Unit} \\
+\midrule
+Application database & Supabase Postgres &
+Accounts, projects, the recording registry, conversations and their messages. Normalised,
+transactional, and subject to row-level security. & Row \\
+Object storage & Supabase Storage, two buckets &
+Video bytes as uploaded, the canonical copy the pipeline reads, and one poster frame per
+recording. & Object \\
+Analysis record store & JSON documents on local disk &
+Everything the analyzers and aggregators produced for one recording, nested under its
+chunks. & Document \\
+Vector store & Qdrant, embedded &
+One point per chunk per analyzer, carrying five embeddings and a filterable payload. &
+Point \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The analysis output is held as documents rather than as relations because its schema is
+defined by the analyzer registry, not by the database: each analyzer declares its own
+output shape, and a chunk carries one key per analyzer that ran on it. Modelling that
+relationally would make adding an analyzer a schema migration, which directly contradicts
+NFR-8. Conversely, application state is relational because it requires foreign keys,
+cascading deletes and per-row access control, none of which a document store provides as
+cheaply. Retrieval is separated again because approximate nearest-neighbour search over
+several named vector spaces is not something either of the other two can serve.
+
+\subsection{Application Database}
+
+Figure~\ref{fig:erd} gives the logical structure --- which relations exist and how they
+are related --- and Figure~\ref{fig:schema} the physical schema as it stands in Postgres,
+with every column, its type and whether it is nullable.
+
+\subsubsection*{Entity relationships}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+
+  \node[extbox] (users) {\textbf{auth.users}\\[2pt]\scriptsize Supabase Auth};
+  \node[entity, below=11mm of users] (projects)
+    {\textbf{projects}\\[2pt]\scriptsize id, user\_id, name};
+
+  \node[entity, below left=12mm and 5mm of projects] (video)
+    {\textbf{video\_core}\\[2pt]\scriptsize id, project\_id, user\_id,\\
+     \scriptsize core\_video\_id, status};
+  \node[entity, below right=12mm and 5mm of projects] (conv)
+    {\textbf{conversations}\\[2pt]\scriptsize id, project\_id, user\_id};
+  \node[entity, below=11mm of conv] (msg)
+    {\textbf{messages}\\[2pt]\scriptsize id, conversation\_id, role, parts};
+
+  \draw[rel] (users) -- node[card, right=1mm] {$1 : n$} (projects);
+  \draw[rel] (projects.south) -- ++(0,-4mm) -| node[card, pos=0.3, above] {$1 : n$} (video.north);
+  \draw[rel] (projects.south) -- ++(0,-4mm) -| node[card, pos=0.3, above] {$1 : n$} (conv.north);
+  \draw[rel] (conv) -- node[card, right=1mm] {$1 : n$} (msg);
+
+\end{tikzpicture}
+\caption{Application database. Every relationship cascades on delete, so removing a
+project removes its recordings, conversations and messages with it.}
+\label{fig:erd}
+\end{figure}
+
+\subsubsection*{Physical schema}
+
+\optfigure{falcon-vqa-schema.png}{Application database as deployed: the four live
+relations with their columns, types and nullability, and their foreign keys into
+\texttt{auth.users}. Filled markers denote non-nullable columns.}{0.92}{fig:schema}
+
+\subsubsection*{\texttt{video\_core}}
+
+This relation is the application's view of a recording analysed by the core service. It
+is the only place where the two halves of the system meet, and three of its design
+decisions are load-bearing.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.2cm}L{2.5cm}X@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Purpose} \\
+\midrule
+\texttt{id} & \texttt{uuid} PK & Application identity, independent of the analysis service. \\
+\texttt{project\_id} & \texttt{uuid} FK & Owning project; cascades on delete. \\
+\texttt{user\_id} & \texttt{uuid} FK & Owning account; the column row-level security tests. \\
+\texttt{title} & \texttt{text} & Display name, editable without affecting analysis. \\
+\texttt{source\_type} & \texttt{text} & \texttt{upload} or \texttt{url}. \\
+\texttt{storage\_path} & \texttt{text} & Object in the application project's bucket. \\
+\texttt{source\_url} & \texttt{text} & The URL the analysis service was handed. \\
+\texttt{core\_video\_id} & \texttt{text} & The content hash the analysis service identifies this recording by. Null until the bytes have been fetched. \\
+\texttt{playback\_url} & \texttt{text} & The public MP4 in the analysis project's bucket; this is what actually plays. \\
+\texttt{poster\_url} & \texttt{text} & Single frame written at ingest, for the workspace grid. \\
+\texttt{duration}, \texttt{size\_bytes} & \texttt{numeric}, \texttt{bigint} & Reported back by the analysis service. \\
+\texttt{status} & \texttt{text} & \texttt{pending}, \texttt{uploading}, \texttt{queued}, \texttt{analyzing}, \texttt{ready} or \texttt{failed}. \\
+\texttt{job\_id} & \texttt{text} & The background job being polled. \\
+\texttt{stage} & \texttt{text} & \texttt{fetching}, \texttt{chunking}, \texttt{analyzing}, \texttt{indexing}, \texttt{aggregating} or \texttt{complete}. \\
+\texttt{progress} & \texttt{jsonb} & The job's last progress detail, rendered directly by the interface. \\
+\texttt{error} & \texttt{text} & Failure reason, retained so the row explains itself. \\
+\texttt{ingest\_config} & \texttt{jsonb} & What the pipeline was asked for: analyzers, mode, preset, weights, interval and duration bounds. \\
+\texttt{analyzers} & \texttt{text[]} & What it actually produced. \\
+\texttt{aggregates} & \texttt{text[]} & Which video-level results exist. \\
+\texttt{chunk\_config} & \texttt{text} & The chunking scheme, e.g. \texttt{audio\_video:5-20}. \\
+\texttt{chunk\_count} & \texttt{int} & Number of chunks produced. \\
+\texttt{created\_at}, \texttt{updated\_at} & \texttt{timestamptz} & \texttt{updated\_at} is maintained by trigger. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{enumerate}[label=\textbf{D-\arabic*.},leftmargin=3.0em]
+  \item \textbf{Two URLs are kept, not one.} The system spans two Supabase projects: this
+        one holds the row and the object the browser uploaded, while the analysis
+        service's own project holds the canonical copy that plays.
+        \texttt{source\_url} and \texttt{playback\_url} therefore point at different
+        objects and both are retained.
+  \item \textbf{Uniqueness is per project, never global.} Because
+        \texttt{core\_video\_id} is the content hash, the same file added to two
+        projects yields the same value. The unique index is declared over
+        \texttt{(project\_id, core\_video\_id)} and is partial --- restricted to rows
+        where the column is non-null, since the identifier does not exist until the
+        bytes have been downloaded. Deleting one project's row must therefore not
+        delete the analysis service's copy while another row still references it.
+  \item \textbf{Produced analyzers are an array, not a document.} Both the interface and
+        the agent evaluate \emph{``does this recording have people analysis?''} as a
+        predicate, which an array answers directly and an opaque JSON document does not.
+        The requested configuration, by contrast, is \texttt{jsonb}, because it is
+        replayed verbatim on re-index rather than queried.
+\end{enumerate}
+
+\subsubsection*{Remaining relations}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.6cm}X@{}}
+\toprule
+\textbf{Relation} & \textbf{Columns and notes} \\
+\midrule
+\texttt{projects} & \texttt{id}, \texttt{user\_id}, \texttt{name}, \texttt{description}, timestamps. The grouping every other relation hangs from. \\
+\texttt{conversations} & \texttt{id}, \texttt{user\_id}, \texttt{project\_id}, \texttt{title}, \texttt{lastContext}, timestamps. A conversation is optionally attached to a project; the attachment is what scopes the agent's tools. \\
+\texttt{messages} & \texttt{id}, \texttt{conversation\_id}, \texttt{role}, \texttt{parts}, \texttt{metadata}, \texttt{created\_at}. \texttt{parts} is \texttt{jsonb} because a turn is a sequence of heterogeneous parts --- text, tool calls, tool results and artifacts --- whose shapes are set by the agent runtime. \\
+\texttt{videos} & Superseded. The relation predates the current analysis service and is retained but no longer read by anything; \texttt{video\_core} replaced it additively so that no migration had to drop data. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection*{Indexes, integrity and access control}
+
+\begin{itemize}
+  \item \textbf{Indexes.} \texttt{video\_core} is indexed on
+        \texttt{(project\_id, created\_at DESC)} for the workspace listing, and partially
+        on \texttt{job\_id} where it is non-null, which is the lookup that reconciliation
+        performs. \texttt{conversations} is indexed on \texttt{project\_id} and
+        \texttt{messages} on \texttt{(conversation\_id, created\_at)}, the order a
+        conversation is replayed in.
+  \item \textbf{Integrity.} Every foreign key cascades on delete, so a removed account or
+        project leaves nothing orphaned. A shared trigger function maintains
+        \texttt{updated\_at} on each relation that carries it.
+  \item \textbf{Access control.} Row-level security is enabled on every relation.
+        \texttt{projects}, \texttt{conversations} and \texttt{video\_core} test
+        \texttt{auth.uid() = user\_id} directly. \texttt{messages} carries no owner
+        column, so its policy tests ownership of the parent conversation through an
+        \texttt{EXISTS} subquery --- the row is reachable only if the conversation it
+        belongs to is. This is the database half of NFR-9; the other half is the
+        project-scoping function through which the agent's tools resolve recording
+        identifiers.
+\end{itemize}
+
+\subsection{Object Storage}
+
+Two public buckets are used, one in each Supabase project.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.6cm}L{2.7cm}X@{}}
+\toprule
+\textbf{Bucket} & \textbf{Project} & \textbf{Contents and policy} \\
+\midrule
+\texttt{project-assets} & Application &
+What the browser uploads, laid out per user and project. Public read; insert restricted
+to authenticated accounts; delete restricted to the object's owner. \\
+\texttt{videos} & Analysis service &
+The canonical copy the pipeline reads, stored at
+\texttt{\{video\_id\}/\{filename\}}, together with
+\texttt{\{video\_id\}/poster.jpg}. Public read, so a playback URL is permanent and
+unsigned. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Because the object path begins with the content hash, re-ingesting identical bytes
+resolves to an object that already exists and the upload is skipped entirely. The
+service checks for the object before writing rather than relying on overwrite semantics,
+so a repeated ingest of a large recording costs nothing.
+
+\subsection{Analysis Record Store}
+
+One JSON document is written per recording, named
+\texttt{\{sanitised-filename\}\_\_\{video\_id[:8]\}.json}. The filename carries a
+human-readable stem so that a directory of records can be inspected directly, and the
+truncated content hash so that two recordings sharing a name cannot collide. On
+re-ingest, any existing document for the same identifier is removed before the new one
+is written, so a stale record can never sit alongside a current one under a different
+name.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}L{2.2cm}X@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Contents} \\
+\midrule
+\texttt{video\_id} & string & Content hash; the identity every other store joins on. \\
+\texttt{video\_url} & string & Public URL of the canonical copy. \\
+\texttt{storage\_path} & string & Object path within the analysis bucket. \\
+\texttt{source\_url} & string & Where the recording was fetched from. \\
+\texttt{filename} & string & Original name, preserved for display. \\
+\texttt{preset}, \texttt{params} & string, object & The chunking scheme and its duration bounds or weights. \\
+\texttt{chunk\_config} & string & The composite key identifying that scheme. \\
+\texttt{duration}, \texttt{size\_bytes} & number & Measured at ingest. \\
+\texttt{poster\_url} & string & The extracted poster frame. \\
+\texttt{analyzers} & array & Which analyzers ran. \\
+\texttt{chunks} & array & One entry per chunk; see below. \\
+\texttt{aggregates} & object & One key per aggregator, holding its full result. \\
+\texttt{aggregates\_analyzers} & array & The analyzer set the aggregates were computed from, so a stale cache is detectable. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Each entry of \texttt{chunks} carries \texttt{id}, \texttt{start} and \texttt{end},
+followed by \emph{one key per analyzer that produced output for that chunk}, whose value
+is that analyzer's structured result --- \texttt{default\_video} holding the scene
+schema, \texttt{people} holding per-person records with their box locations,
+\texttt{ocr} holding the read texts, and so on. An analyzer that was gated out for a
+chunk simply contributes no key, so absence is represented naturally rather than as a
+null. This is precisely the shape a relational schema cannot accommodate without a
+migration per analyzer.
+
+Two conventions apply throughout. Keys prefixed with an underscore ---
+\texttt{\_frames}, \texttt{\_detector\_labels} --- are provenance retained for debugging:
+they record which frames a description was derived from and what the cheap detector
+believed, and they are never embedded, never copied into a vector payload and never
+returned by the API. And no local filesystem path is ever persisted; the cached file is
+re-derived from \texttt{video\_id} on demand and re-downloaded if the cache is cold, so
+a record remains correct after the data directory moves or the cache is wiped.
+
+\subsection{Vector Store}
+
+\subsubsection*{Collection and point structure}
+
+A single Qdrant collection, \texttt{chunks}, holds one point per
+\emph{(recording, analyzer, chunk span, chunk configuration)}. Each point carries all
+five named vectors, each 384-dimensional and compared by cosine distance. Making the
+point --- rather than the vector --- the unit of storage means a limit of ten returns ten
+chunks, the payload is stored once, and a filter is evaluated once.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.5cm}X@{}}
+\toprule
+\textbf{Named vector} & \textbf{Embedded text} \\
+\midrule
+\texttt{combined}    & The whole flattened record. The default search space. \\
+\texttt{description} & The prose description alone. \\
+\texttt{people}      & Role, clothing and appearance, phrased as clauses. \\
+\texttt{actions}     & What each subject did, or what each object was used for. \\
+\texttt{objects}     & Object names, or the literal strings read from screen. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A vector space is omitted rather than written empty, so a chunk in which no person was
+seen is not a candidate in a people-scoped search at all, instead of matching against
+empty text.
+
+\subsubsection*{Point identity}
+
+The point identifier is a UUID derived deterministically from
+
+\begin{center}
+\texttt{sha1(video\_id | analyzer\_id | start | end | chunk\_config)}
+\end{center}
+
+so that re-ingesting the same chunk upserts in place rather than duplicating. The key is
+built from the \emph{time span} rather than a positional index, because chunk 12 of one
+chunking run is a different moment from chunk 12 of another and a positional identifier
+would silently rebind a vector to the wrong timeframe. Custom chunking weights are
+hashed into \texttt{chunk\_config} for the same reason: without it, two different
+weightings sharing the same duration bounds would collide and the second ingest would
+overwrite the first.
+
+\subsubsection*{Payload and filters}
+
+The payload carries everything required to rank, filter and cite a moment, so retrieval
+never joins back to the record store: the recording identifier and playback URL, the
+analyzer, chunk configuration and chunk identifier, the time span, the combined text and
+description, the setting, the people, objects, actions and tags, the speakers and their
+turns, the texts read from screen, the object detections, the full per-person records,
+and the person count.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.5cm}L{2.4cm}L{1.9cm}X@{}}
+\toprule
+\textbf{Filter} & \textbf{Payload field} & \textbf{Match} & \textbf{Type} \\
+\midrule
+\texttt{video\_ids}    & \texttt{video\_id}     & any   & \texttt{list[str]} \\
+\texttt{chunk\_ids}    & \texttt{chunk\_id}     & any   & \texttt{list[int]} \\
+\texttt{analyzer\_ids} & \texttt{extractor\_id} & any   & \texttt{list[str]} \\
+\texttt{chunk\_config} & \texttt{chunk\_config} & exact & \texttt{str} \\
+\texttt{objects}       & \texttt{objects}       & any   & \texttt{list[str]} \\
+\texttt{tags}          & \texttt{tags}          & any   & \texttt{list[str]} \\
+\texttt{speakers}      & \texttt{speakers}      & any   & \texttt{list[str]} \\
+\texttt{people}        & \texttt{people}        & any   & \texttt{list[str]} \\
+\texttt{min\_people}   & \texttt{people\_count} & $\geq$ & \texttt{int} \\
+\texttt{max\_people}   & \texttt{people\_count} & $\leq$ & \texttt{int} \\
+\texttt{after}         & \texttt{start}         & $\geq$ & \texttt{float} \\
+\texttt{before}        & \texttt{end}           & $\leq$ & \texttt{float} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The filter set is declared in one place and the API passes a flat dictionary through to
+it, so a filter added to the declaration is reachable from the API immediately; the
+previous hand-plumbed parameter list left six store filters silently unreachable. An
+unrecognised filter name raises an error carrying the nearest valid name, because a
+filter that is silently ignored returns plausible but wrong results, which is worse than
+a failure.
+
+The same twelve fields are declared as payload indexes. The person count is indexed
+specifically because counting is what embeddings cannot do: a query for \emph{``mostly
+empty store''} retrieved the busiest chunk in the recording, since a description listing
+five people reads much the same to a vector as one listing two. In embedded mode Qdrant
+ignores payload indexes and filtering scans instead --- correct, and acceptable at this
+scale. The index declarations are retained so that pointing the same code at a Qdrant
+server gains real indexes with no change.
+
+Deletion is scoped rather than wholesale. Removing vectors takes an optional chunk
+configuration and analyzer identifier, because re-running one analyzer must delete only
+that analyzer's vectors; deleting by recording alone would destroy every other
+analyzer's work, so adding one analyzer to an existing recording would silently discard
+the rest.
+
+\subsection{Cross-Store Identity}
+
+The content hash is the single join key across all four stores. It is computed while the
+bytes are being read, which is why the download must complete before the object's own
+name exists.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+
+  \node[storebox] (pg)
+    {\textbf{Postgres}\\[2pt]\scriptsize \texttt{video\_core}\\
+     \scriptsize \texttt{core\_video\_id}};
+  \node[storebox, right=8mm of pg] (obj)
+    {\textbf{Object storage}\\[2pt]\scriptsize \texttt{videos} bucket\\
+     \scriptsize \texttt{\{hash\}/file.mp4}};
+  \node[storebox, right=8mm of obj] (rec)
+    {\textbf{Record store}\\[2pt]\scriptsize \texttt{\{hash\}.json}\\
+     \scriptsize \texttt{video\_id}};
+  \node[storebox, right=8mm of rec] (qd)
+    {\textbf{Qdrant}\\[2pt]\scriptsize \texttt{chunks} payload\\
+     \scriptsize \texttt{video\_id}};
+
+  \draw[keyflow] (pg) -- (obj);
+  \draw[keyflow] (obj) -- (rec);
+  \draw[keyflow] (rec) -- (qd);
+
+  \node[card, below=4mm of obj.south] (note)
+    {joined by one content hash, \texttt{sha1(bytes)[:16]}};
+
+\end{tikzpicture}
+\caption{The content hash of the video bytes is the identity shared by every store, which
+is what makes ingestion idempotent (NFR-10).}
+\label{fig:keys}
+\end{figure}
+
+Durability differs by store, and the difference is intentional:
+
+\begin{itemize}
+  \item The \textbf{record store} is authoritative. It holds the analyzer and aggregator
+        output, which is the expensive artifact, and everything else can be rebuilt from
+        it.
+  \item The \textbf{vector store} is derived. Re-indexing rebuilds it from the records
+        at the cost of local embedding alone, with no API spend and no re-analysis.
+  \item The \textbf{media cache} is regenerable. Deleting it costs a re-download and
+        never data, which is why no local path is persisted anywhere.
+  \item \textbf{Job state} is deliberately in memory and does not survive a restart. The
+        application detects the loss when a poll returns nothing, and either recovers
+        the recording from its persisted record or fails the row explicitly so that
+        re-indexing becomes the route forward.
+\end{itemize}

@@ -1,6 +1,7 @@
 % Packages, styling and shared macros. Included by report.tex.
 
 \usepackage[margin=1in]{geometry}
+\usepackage{amsmath}   % \text in the fusion equation, Section 5
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -10,6 +11,8 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{caption}
 \usepackage[section]{placeins}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 
 % Keep every table inside the subsection that introduces it, instead of drifting
 % past the next heading.
@@ -49,3 +52,23 @@
 
 % Left-aligned fixed-width column, used by every table in the report.
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% --- diagram styles (Section 7, database design) -----------------------------
+\definecolor{store}{HTML}{2E7D5B}   % storage tiers
+\definecolor{muted}{HTML}{5B6670}   % edge labels and notes
+
+\tikzset{
+  entity/.style={
+    draw=accent, line width=0.9pt, fill=accent!6, rounded corners=2.5pt,
+    inner sep=6pt, align=center, font=\small, minimum width=2.9cm},
+  extbox/.style={
+    draw=muted, line width=0.7pt, fill=muted!8, rounded corners=2.5pt,
+    dash pattern=on 3pt off 2pt,
+    inner sep=6pt, align=center, font=\small, minimum width=2.9cm},
+  storebox/.style={
+    draw=store, line width=0.9pt, fill=store!6, rounded corners=2.5pt,
+    inner sep=6pt, align=center, font=\small, minimum width=3.1cm},
+  rel/.style={draw=muted, line width=0.7pt, -{Latex[length=2mm]}},
+  card/.style={font=\scriptsize\color{muted}, inner sep=1.5pt},
+  keyflow/.style={draw=store, line width=0.9pt, -{Latex[length=2.2mm]}},
+}
