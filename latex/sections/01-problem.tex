@@ -1,0 +1,38 @@
+\section{Problem Understanding}
+
+Recorded surveillance is one long timeline with nothing but a clock to index it. To
+find something you pick a date and time and scrub until you see it. That works if you
+already know when it happened. Usually you don't. What you have is a description of
+what happened, because someone told you: a man in a yellow shirt left a bag near the
+checkout. You cannot search for that, because nothing in the recording chain has ever
+written down what is in the footage.
+
+General-purpose video AI does not fill the gap. It is built for edited video, and it
+assumes three things surveillance does not have:
+
+\begin{itemize}
+  \item Shot cuts to split on. A fixed camera has none.
+  \item Speech to transcribe. Most of the footage is silent.
+  \item Events that look dramatic. Real ones are brief and ordinary.
+\end{itemize}
+
+Given footage like this, such tools either treat the whole hour as one segment or cut
+it into thousands of near-identical ones. Neither can be searched.
+
+So the problem is to describe footage that has almost no structure of its own, and
+make it findable by that description. The operator should type what they are looking
+for and get the moment back, with a timestamp, ready to play.
+
+\subsection{What we set out to deliver}
+
+\begin{itemize}
+  \item A working pipeline that takes a recording and makes it searchable by description.
+  \item Search that returns ranked moments with timecodes, and question answering that
+        gives an answer with references instead of a list of clips.
+  \item Video-level output an operator can read without watching anything: summary,
+        chapters, events, who and what appeared, and anything unusual.
+  \item A web interface where all of this happens in one place --- upload, search, ask,
+        and play the moment.
+  \item A documented HTTP API, so the same system can be driven by an LLM agent rather
+        than only by a person.
+\end{itemize}

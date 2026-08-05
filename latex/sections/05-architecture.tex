@@ -1,0 +1,167 @@
+\section{Architecture and Technology Stack}
+
+\subsection{Design Methodology}
+
+The system was built iteratively, one stage of the pipeline at a time, each one
+working end to end before the next was started. Two rules shaped most of the design:
+
+\begin{itemize}
+  \item \textbf{Measure before deciding.} Every threshold and sampling choice in the
+        pipeline was set by running it on real footage and comparing, not by picking a
+        number that looked reasonable. Several of the enhancements in the previous
+        section exist because the obvious choice was tried first and failed.
+  \item \textbf{Add by registration, not by editing.} Analyzers and aggregators are
+        registered in one place and discovered from there. Nothing in ingest, storage
+        or the API names a specific analyzer, so adding one does not touch them.
+\end{itemize}
+
+Testing was done against a running server rather than by reading code, because
+several problems --- stale processes, broken synthesis, wrong media paths --- only
+appeared over HTTP.
+
+\subsection{Architectural Overview}
+
+The system is a three-tier application. A Next.js client provides the operator
+interface and hosts an LLM agent that translates conversational requests into
+retrieval calls. A FastAPI service owns the entire video pipeline and exposes it as a
+self-describing HTTP API. Persistence is split across object storage for media, a
+relational database for application state, and a vector database for retrieval.
+
+Composition inside the service is deliberately \emph{in-process}: aggregators call
+analyzer output directly rather than over HTTP, and HTTP is reserved for the external
+boundary. Analyzers and aggregators are held in registries, which is what makes
+NFR-6 achievable --- the ingest path, the store and the API iterate over a registry
+and never name a specific analyzer.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.2cm}X@{}}
+\toprule
+\textbf{Layer} & \textbf{Responsibility} \\
+\midrule
+Client            & Project workspace, video upload, agent chat, clip artifact panel, timeline playback. \\
+Agent layer       & Multi-step tool loop; converts a natural-language request into search, ask and clip calls, and streams results back. \\
+Core service      & Ingest orchestration, chunking, analyzers, aggregators, vector search, question answering, job tracking. \\
+Storage boundary  & The single module that knows both a storage URL and a local path; everything above it speaks URLs, everything below it receives paths. \\
+Persistence       & Object storage for video bytes, relational store for application state, vector store for chunk embeddings, local cache for decoded media and weights. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Pipeline Phases}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.4cm}L{4.4cm}X@{}}
+\toprule
+\textbf{Phase} & \textbf{Input $\rightarrow$ Output} & \textbf{What happens} \\
+\midrule
+Ingestion & Video file or URL $\rightarrow$ chunk spans &
+Content-hash identity, upload to object storage, local cache; four boundary
+detectors run; weighted Gaussian fusion picks cut points; spans merged and split to
+the duration bounds. \\
+Analysis & Chunk spans $\rightarrow$ structured records &
+Selected analyzers run per chunk, each with its own frame sampler and prompt.
+Cheap detectors gate the expensive vision--language calls. \\
+Indexing & Records $\rightarrow$ vectors + aggregates &
+Text embedded locally into named vectors, one point per chunk with a filterable
+payload; twelve video-level aggregators run in dependency order over saved records. \\
+Querying & Question $\rightarrow$ cited answer &
+Vector search with typed filters and detail levels; questions routed to the
+aggregates that can answer them; synthesis with mandatory timecode citations. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Technology Stack}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.2cm}X@{}}
+\toprule
+\textbf{Concern} & \textbf{Technology} \\
+\midrule
+Frontend        & Next.js 15, React 19, TypeScript, Tailwind CSS v4, shadcn/ui on Radix \\
+Agent \& models & Vercel AI SDK v6; OpenAI, Google, Groq, Cerebras and xAI providers \\
+Client state    & Zustand, TanStack Query \\
+Playback        & video.js, hls.js \\
+Backend         & Python 3.13, FastAPI, Uvicorn \\
+ML runtime      & PyTorch 2.11 (CUDA 13), Transformers \\
+Boundary detection & pyannote.audio (speaker change), Silero VAD (silence), PySceneDetect (hard cuts), OpenCLIP ViT-B/32 (semantic drift) \\
+Analysis models & Vision--language model for scene, people, object and text description; faster-whisper for transcription; YOLO11 and EasyOCR as detection gates \\
+Aggregation models & GLiNER for named-entity recognition, RoBERTa for sentiment, LLM for narrative aggregates \\
+Embeddings      & BGE-small-en-v1.5 via sentence-transformers, run locally \\
+Vector store    & Qdrant, one point per chunk with five named vectors \\
+Media I/O       & OpenCV, PyAV, soundfile \\
+Application data & Supabase --- Postgres, Auth and Storage \\
+Deployment      & Vercel (client), CUDA-capable host (core service), Supabase Cloud, Qdrant \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\optfigure{video-mind-tech.png}{Technology stack across the frontend, backend, storage and deployment tiers.}{1.0}
+
+\subsubsection*{Why these tools}
+
+\begin{itemize}
+  \item \textbf{Python for the backend.} Every model we depend on --- diarization,
+        CLIP, Whisper, YOLO, the embedding model --- ships as a Python library first.
+        Nothing else would have let us assemble this many models this quickly.
+  \item \textbf{FastAPI.} Async request handling for long ingest jobs, and generated
+        API documentation, which matters when an LLM agent is one of the clients.
+  \item \textbf{Qdrant.} Named vectors are the reason. Storing several vectors per
+        chunk under one point is a first-class feature there, and it is what
+        enhancement E-3 rests on. It also runs embedded, so development needs no
+        separate server.
+  \item \textbf{Local embedding model.} Embedding runs on every chunk of every video.
+        Paying an API per embedding would make re-indexing expensive; a small local
+        model makes it free.
+  \item \textbf{Next.js and the Vercel AI SDK.} Streaming responses and tool calling
+        are built in, so the agent interface was a matter of defining tools rather
+        than building a chat runtime.
+  \item \textbf{Supabase.} Postgres, authentication and file storage from one service,
+        which is the whole of our non-video state.
+\end{itemize}
+
+\subsection{System Requirements}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.6cm}X@{}}
+\toprule
+\textbf{Component} & \textbf{Requirement} \\
+\midrule
+GPU              & CUDA-capable NVIDIA GPU, 8\,GB VRAM minimum (developed on an RTX 4060). Required for diarization, CLIP, Whisper, YOLO and embedding models. \\
+Runtime          & Python 3.13; Node.js 20 or later for the client. \\
+Memory / storage & 16\,GB system RAM; disk sized for the media cache, which holds one decoded copy of each ingested video keyed by content hash. \\
+External services & Object storage and Postgres (Supabase project); an LLM provider API key for vision analysis and answer synthesis; a Hugging Face token for the gated diarization model. \\
+Network          & Outbound HTTPS for model downloads, storage and LLM calls. Ingestion is a background job, so link latency does not block the client. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Scope for Future Enhancements}
+
+The design leaves room in the places we expect to extend next:
+
+\begin{itemize}
+  \item \textbf{Linking people across videos.} People are already linked within a
+        video. Doing it across an entire camera network is the same clustering step
+        run over a wider set; it is not built yet because the footage we have shares
+        no people to test it on.
+  \item \textbf{Live camera input.} Ingestion currently takes a recording. The same
+        pipeline can run on a rolling window from a live feed, since chunking works
+        on segments rather than whole files.
+  \item \textbf{Visual re-identification.} Where clothing descriptions are too generic
+        to distinguish two people, the stored bounding boxes give us the crops needed
+        to compare them visually instead.
+  \item \textbf{More analyzers.} Anything that reads a chunk and returns structured
+        output can be added --- licence plates, pose, crowd density --- as a single
+        module, with no change to the rest of the system.
+  \item \textbf{Agent access over MCP.} The API already describes itself; exposing it
+        as a tool server would let an external assistant use it directly.
+\end{itemize}

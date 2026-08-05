@@ -1,0 +1,79 @@
+\section{User Interface and Acceptance Planning}
+
+\subsection{Interface Design}
+
+The interface is built around one idea: the operator should never have to scrub. Every
+screen ends in a moment that plays.
+
+\optfigure{video-mind-ui.jpeg}{Operator interface: a natural-language query and its ranked, timestamped results.}{1.0}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}X@{}}
+\toprule
+\textbf{Screen} & \textbf{What the operator does there} \\
+\midrule
+Projects        & Groups a set of recordings. Opening one lands on its workspace. \\
+Workspace       & Adds recordings by file or link, and watches each one move through
+                  \emph{Uploading}, \emph{Indexing} and \emph{Ready}. Only ready
+                  recordings can be searched, and the interface says so rather than
+                  returning nothing. \\
+Chat            & Types a description or a question, and chooses which recordings to
+                  look at. Answers stay short and cite timecodes. \\
+Clip panel      & Opens beside the chat when results are moments. A player on top, the
+                  list of moments below; clicking one plays it, and they can be played
+                  back to back as a reel. \\
+Insights        & Reads the video-level output --- summary, chapters, events, people
+                  and objects, anything unusual --- without watching the footage. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Acceptance Test Plan}
+
+Each test is run against a live server on the datasets below, and traces to the
+requirement it covers.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lL{2.9cm}XL{1.4cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Test} & \textbf{Passes when} & \textbf{Covers} \\
+\midrule
+AT-1 & Add a recording & A file and a link both reach \emph{Ready}, and the chosen depth of analysis is what actually ran. & FR-1 \\
+AT-2 & Progress is visible & Stage and progress update while processing, and the interface stays usable throughout. & FR-2, NFR-3 \\
+AT-3 & Search by description & A described event returns the correct moment in the top few results. & FR-3 \\
+AT-4 & Filtered search & Restricting by time and by content removes non-matching results and keeps matching ones. & FR-4 \\
+AT-5 & Ask a question & The answer is correct and every claim carries a timecode reference. & FR-5, NFR-5 \\
+AT-6 & Unanswerable question & The system says the footage does not support an answer instead of inventing one. & NFR-5 \\
+AT-7 & Play the moment & Selecting a result begins playback at that timecode without scrubbing. & FR-6, NFR-4 \\
+AT-8 & Video-level review & Summary, chapters, events, people and anomalies are produced and readable. & FR-7 \\
+AT-9 & Re-add and re-examine & The same file re-added is recognised; re-examining at another depth keeps earlier results. & FR-8 \\
+AT-10 & Silent, cut-free footage & Fixed-camera footage with no speech still produces multiple chunks and usable descriptions. & NFR-6 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Datasets}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}L{3.6cm}X@{}}
+\toprule
+\textbf{Dataset} & \textbf{Content} & \textbf{What it tests} \\
+\midrule
+Supermarket CCTV & 5 minutes, 1280$\times$720, fixed camera, no speech &
+The main fixture. A recording with no cuts and no audio at all --- the case general
+tools fail on. Used for chunking, scene, people, object and OCR tests. \\
+Multi-speaker clip & 60 seconds, several speakers &
+The only fixture where speaker change, silence and speaker-attributed transcription
+all fire. Used for every audio path. \\
+Extended set (planned) & Longer footage, multiple cameras, one shared subject &
+Needed for cross-video person linking, which cannot be tested on footage that shares
+no people. \\
+\bottomrule
+\end{tabularx}
+\end{table}

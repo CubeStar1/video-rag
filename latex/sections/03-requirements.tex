@@ -1,0 +1,48 @@
+\section{Requirements Analysis}
+
+\subsection{Functional Requirements}
+
+Requirements are stated from the operator's perspective --- what a user of the system
+must be able to do with their footage.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lL{2.6cm}X@{}}
+\toprule
+\textbf{ID} & \textbf{Capability} & \textbf{The system shall allow the operator to\dots} \\
+\midrule
+FR-1 & Adding footage    & Add a recording to the system, either as a file or as a link, and choose how thoroughly it should be examined --- trading processing cost against the depth of detail captured. \\
+FR-2 & Tracking progress & See that a recording is being processed, which stage it has reached and how far along it is, and continue working while it runs. \\
+FR-3 & Searching         & Find moments by describing what happened in plain language, without knowing when it occurred or what it was called. \\
+FR-4 & Narrowing results & Narrow a search to a period of the recording, to footage containing particular people, objects or spoken content, or to a chosen set of recordings. \\
+FR-5 & Asking questions  & Ask a question about a recording and receive a direct answer, with references to the moments the answer was drawn from. \\
+FR-6 & Reviewing results & See exactly when each result occurred and play the footage from that moment. \\
+FR-7 & Understanding a recording & Review a recording as a whole --- its summary, its chapters, the notable events in it, the people and objects that appear and when, and anything unusual. \\
+FR-8 & Revisiting footage & Re-examine a recording already in the system at a different level of detail, without re-adding it and without losing what was already found. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Non-Functional Requirements}
+
+Stated as service targets an operator would notice. The figures are design budgets
+to be confirmed by benchmarking, not measured results.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lL{2.6cm}X@{}}
+\toprule
+\textbf{ID} & \textbf{Quality} & \textbf{Requirement} \\
+\midrule
+NFR-1 & Responsiveness & A description search returns ranked moments within 2 seconds, and a question is answered within 15 seconds. \\
+NFR-2 & Processing time & A recording becomes searchable within roughly three times its own length, and the operator can keep working on other recordings while it processes. \\
+NFR-3 & Transparency   & Progress is visible throughout processing, refreshed at least every 5 seconds, so a long wait is never unexplained. \\
+NFR-4 & Playback       & Selecting a result begins playing the footage at that moment within 2 seconds, with no manual scrubbing. \\
+NFR-5 & Trustworthiness & Every answer cites the moments it was drawn from, and the system states that it cannot answer rather than guessing. \\
+NFR-6 & Robustness     & Ordinary surveillance footage --- unedited, often silent, from a fixed camera --- is handled as a normal case, not a failure case. \\
+NFR-7 & Cost control   & The operator chooses how thoroughly each recording is examined, and reviewing what was found never incurs further processing cost. \\
+\bottomrule
+\end{tabularx}
+\end{table}

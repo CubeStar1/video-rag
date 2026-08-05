@@ -1,0 +1,42 @@
+% VideoMind — Software Design Document
+%
+% Main file. Packages and styling live in preamble.tex; each section is its own
+% file under sections/. To reorder the report, reorder the \input lines below.
+% To work on one section alone, comment the others out --- numbering and the
+% table of contents adjust on their own.
+
+\documentclass[11pt,a4paper]{article}
+
+\input{preamble}
+
+% --- title -------------------------------------------------------------------
+\title{\vspace{-1.5em}\textbf{VideoMind}\\[0.3em]
+       \large A Semantic Retrieval Layer for Surveillance Footage\\[0.6em]
+       \normalsize Software Design Document}
+\author{Avinash Anish \and Vaivaswat Verma}
+\date{\today}
+
+\begin{document}
+\maketitle
+\vspace{-2em}
+
+\tableofcontents
+\vspace{1.5em}
+
+\input{sections/01-problem}
+\input{sections/02-solution}
+\input{sections/03-requirements}
+
+\clearpage
+\input{sections/04-enhancements}
+
+\clearpage
+\input{sections/05-architecture}
+
+\clearpage
+\input{sections/06-ui-acceptance}
+
+\clearpage
+\input{sections/07-execution}
+
+\end{document}

@@ -1,0 +1,54 @@
+\section{Solution Overview}
+
+VideoMind handles a video in five steps: split it into chunks, analyze each chunk,
+index the results, roll them up into video-level summaries, then search or ask
+questions. Most steps have more than one setting, because footage varies too much for
+one fixed choice to work everywhere.
+
+\optfigure{video-mind-arch.png}{VideoMind system architecture.}{1.0}
+
+\subsection{Splitting the video}
+
+We cut the video where something changes. Four detectors look for that: a change of
+speaker, a stretch of silence, a hard cut, and a shift in what the frame looks like.
+Their scores are combined and the strongest peaks become the cut points.
+
+If a signal isn't there at all, its share is passed to the ones that did fire. This
+matters more than it sounds: on a fixed camera there are no cuts and often no speech,
+and without that adjustment the whole clip comes back as one chunk. There are two
+other modes for when this isn't wanted --- supply your own weighting, or just cut
+every $N$ seconds.
+
+The chunking settings are stored alongside the results, so the same video can be
+indexed coarsely and finely at the same time, and a search picks whichever it needs.
+
+\subsection{Analysing each chunk}
+
+You pick which analyzers to run when you upload, because they do not cost the same.
+There is one for describing the scene, one for people, one for objects, one for
+on-screen text, and one for speech.
+
+The vision model is the expensive part, so cheap detectors run first and act as a
+filter. If YOLO sees nothing in a frame and EasyOCR finds no text, that frame is never
+sent. Frames are also deduplicated: we keep a frame only if it looks different enough
+from the last one we kept. The threshold adapts, with a ceiling --- a fixed value kept
+just one frame on a static camera, and a purely relative one started picking up
+compression noise. Frames are read in order rather than seeked to, which measured
+about $22\times$ faster.
+
+\subsection{Searching and asking}
+
+Each chunk is stored as several separate vectors instead of one: the full record, the
+scene description, the people, the actions, the objects. So a search about what
+someone looked like is matched against a short description of a person, rather than
+competing with everything else said about that chunk. Searches can be filtered by
+time, objects, tags, people and so on, and can return more or less detail depending on
+who is reading them.
+
+Questions take a different path. Rather than searching chunks and hoping, the question
+is matched to the video-level summaries that can actually answer it: the entity
+narratives for a question about a person, novelty for ``anything odd here'', the
+statistics for ``how busy was it''.
+
+Either way the operator types a description and gets back ranked moments with
+\texttt{mm:ss} timecodes. Clicking one plays the video from that point.

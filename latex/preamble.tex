@@ -1,0 +1,50 @@
+% Packages, styling and shared macros. Included by report.tex.
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+\usepackage{caption}
+\usepackage[section]{placeins}
+
+% Keep every table inside the subsection that introduces it, instead of drifting
+% past the next heading.
+\let\oldsubsection\subsection
+\renewcommand{\subsection}{\FloatBarrier\oldsubsection}
+
+\graphicspath{{images/}}
+
+% --- look and feel -----------------------------------------------------------
+\definecolor{accent}{HTML}{1F4E79}
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.6em}
+\setlist[itemize]{leftmargin=1.4em,itemsep=0.25em,topsep=0.3em}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\arraystretch}{1.25}
+
+% Include a figure only if the file is present, so the report compiles
+% before the images have been dropped in.
+\newcommand{\optfigure}[3]{%
+  \IfFileExists{images/#1}{%
+    \begin{figure}[htbp]
+      \centering
+      \includegraphics[width=#3\textwidth]{#1}
+      \caption{#2}
+    \end{figure}%
+  }{%
+    \begin{figure}[htbp]
+      \centering
+      \fbox{\parbox[c][3.5cm][c]{0.8\textwidth}{\centering\itshape
+        Missing figure: \texttt{images/#1}}}
+      \caption{#2}
+    \end{figure}%
+  }%
+}
+
+% Left-aligned fixed-width column, used by every table in the report.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}

@@ -1,0 +1,54 @@
+\section{Creative Enhancements}
+
+Most of these came out of something failing on real footage. They are what separates
+the system from a straightforward ``chunk the video and embed the captions'' pipeline.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lL{3.6cm}X@{}}
+\toprule
+\textbf{\#} & \textbf{Enhancement} & \textbf{Why it matters} \\
+\midrule
+E-1 & Multi-signal chunking with weight redistribution &
+Four detectors vote on where to cut, and a signal that never fires gives its share to
+the ones that did. Without this, fixed-camera footage returns as a single chunk. \\
+E-2 & Several chunkings of one video at once &
+Chunk settings are stored with the results, so a video can be indexed coarsely and
+finely at the same time and a search uses whichever suits it. \\
+E-3 & Multiple vectors per chunk &
+Description, people, actions and objects are embedded separately, so a query about
+someone's appearance is matched against a short person description instead of
+competing with everything else in that chunk. \\
+E-4 & Cheap detectors used as gates &
+YOLO and EasyOCR decide whether a frame is worth sending to the vision model. Frames
+with nothing to see or read never cost anything. \\
+E-5 & Detector labels hidden from the vision model &
+YOLO called a thermal-imaged tank an ``airplane'' with 0.73 confidence. Showing it the
+boxes without the labels, the vision model said ``tank''. \\
+E-6 & Adaptive frame sampling &
+Frames are kept by how different they are from the last one kept. A fixed threshold
+kept one frame on a static camera; a purely relative one collected compression noise. \\
+E-7 & Questions routed to summaries, not chunks &
+A question is matched to the video-level output that can answer it --- entities for a
+person, novelty for ``anything odd'', statistics for ``how busy'' --- rather than
+searching segments and hoping. \\
+E-8 & Constrained entity linking &
+People are clustered on appearance under hard constraints (two people visible in the
+same chunk cannot be the same person) \emph{before} an LLM writes anything. Asked to
+match people directly, an LLM merges anyone in dark clothing. \\
+E-9 & Selectable response detail &
+The same search returns a few hundred tokens or tens of thousands. A person wants
+everything; an agent pays per token. \\
+E-10 & Self-describing API &
+One endpoint returns every analyzer, field and filter the system supports, so an LLM
+agent can discover what it can ask instead of being hard-coded against it. \\
+E-11 & Content-addressed videos &
+A video is identified by the hash of its bytes, so the same file uploaded twice is
+recognised as the same video and never processed or stored twice. \\
+E-12 & Agentic front end with clip artifacts &
+Results open in a side panel as a playable clip reel, so ``show me every time someone
+went behind the counter'' produces something you can watch end to end. \\
+\bottomrule
+\end{tabularx}
+\end{table}
