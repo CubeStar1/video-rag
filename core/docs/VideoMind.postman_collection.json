@@ -1,0 +1,579 @@
+{
+  "info": {
+    "_postman_id": "b3f1c2d4-8a55-4e7b-9c31-videomind0001",
+    "name": "VideoMind API",
+    "description": "Video RAG: chunk, analyse, aggregate, search and ask.\n\nBase URL defaults to `http://127.0.0.1:8077` (start with `python serve.py`).\n\n**Variables** — `baseUrl`, `videoId`, `jobId`, `chunkId`, `analyzer`, `aggregator`.\n\n**Auto-capture**: `POST /videos` stores `job_id` into `{{jobId}}`; `GET /jobs/{job_id}` stores `result.video_id` into `{{videoId}}` once the job is done; `GET /videos` falls back to the first listed video. So the usual flow is Upload → poll Job → everything else just works.\n\nThere is no auth. Everything is a read except `POST /videos` (spends time and money) and `POST /videos/{id}/aggregates` (spends LLM calls). `POST /query` and `POST /ask` are POSTs only because their bodies are too complex for a query string — they change nothing.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8077", "type": "string" },
+    { "key": "videoId", "value": "", "type": "string" },
+    { "key": "jobId", "value": "", "type": "string" },
+    { "key": "chunkId", "value": "0", "type": "string" },
+    { "key": "analyzer", "value": "default_video", "type": "string" },
+    { "key": "aggregator", "value": "summary", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Discovery",
+      "description": "Read these first — what this install can do.",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness plus what this instance has loaded. `ui` is false when the server was started with `--api-only`."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schema",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schema",
+              "host": ["{{baseUrl}}"],
+              "path": ["schema"]
+            },
+            "description": "Everything searchable and filterable in one call: analyzers, exclusive groups, vector fields, detail levels, every filter with its type, and every aggregator with its dependencies and whether it costs API calls. Read this before constructing queries rather than guessing field names."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /analyzers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/analyzers",
+              "host": ["{{baseUrl}}"],
+              "path": ["analyzers"]
+            },
+            "description": "The subset of /schema a UI needs to populate dropdowns: analyzers, vector fields, and `exclusive_groups` (e.g. `transcript` + `diarization` cannot be selected together)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET / (web UI)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "The web UI. Returns HTML. Absent (404) when the server was started with `--api-only` / `VIDEOMIND_UI=0`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "description": "Upload a video and watch the job.",
+      "item": [
+        {
+          "name": "POST /videos (mode=preset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Capture the job id so the Jobs requests work without copy-paste.",
+                  "if (pm.response.code === 202) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.job_id) {",
+                  "        pm.collectionVariables.set('jobId', body.job_id);",
+                  "        console.log('jobId ->', body.job_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Required. Pick a video file in Postman before sending."
+                },
+                {
+                  "key": "analyzers",
+                  "value": "default_video,transcript",
+                  "type": "text",
+                  "description": "Comma-separated ids: default_video | transcript | diarization | ocr | people | object_detection. transcript and diarization are mutually exclusive (400)."
+                },
+                { "key": "mode", "value": "preset", "type": "text", "description": "preset | weights | interval" },
+                { "key": "preset", "value": "audio_video", "type": "text", "description": "mode=preset only: audio | video | audio_video" },
+                { "key": "min_duration", "value": "5", "type": "text" },
+                { "key": "max_duration", "value": "20", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos"]
+            },
+            "description": "Upload a video and start ingestion. Returns **202** immediately with a `job_id` — ingestion runs in the background because it takes minutes.\n\n400 for an unknown analyzer, an unknown mode, or a mode missing its required parameters.\n\nThe test script stores `job_id` into `{{jobId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /videos (mode=weights)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.job_id) { pm.collectionVariables.set('jobId', body.job_id); }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [], "description": "Required." },
+                { "key": "analyzers", "value": "default_video", "type": "text" },
+                { "key": "mode", "value": "weights", "type": "text" },
+                { "key": "speaker", "value": "1.0", "type": "text", "description": "At least one of speaker/silence/cut/semantic is required." },
+                { "key": "silence", "value": "0.5", "type": "text" },
+                { "key": "cut", "value": "1.0", "type": "text" },
+                { "key": "semantic", "value": "0.5", "type": "text" },
+                { "key": "min_duration", "value": "5", "type": "text" },
+                { "key": "max_duration", "value": "20", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos"]
+            },
+            "description": "Custom weighting of the four boundary signals. Only the ratios among signals that actually fire matter — weight given to a signal producing no events is redistributed."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /videos (mode=interval)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.job_id) { pm.collectionVariables.set('jobId', body.job_id); }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [], "description": "Required." },
+                { "key": "analyzers", "value": "default_video", "type": "text" },
+                { "key": "mode", "value": "interval", "type": "text" },
+                { "key": "interval", "value": "20", "type": "text", "description": "Seconds per chunk. Required for mode=interval." }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos"]
+            },
+            "description": "Fixed spans, no detectors run. `min_duration`/`max_duration` are **not** applied — you asked for exact spans, so you get exactly those."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /jobs/{job_id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Once ingestion finishes, capture the video_id for every other request.",
+                  "if (pm.response.code === 200) {",
+                  "    const job = pm.response.json();",
+                  "    console.log(job.status, job.stage, JSON.stringify(job.detail));",
+                  "    if (job.status === 'done' && job.result && job.result.video_id) {",
+                  "        pm.collectionVariables.set('videoId', job.result.video_id);",
+                  "        console.log('videoId ->', job.result.video_id);",
+                  "    }",
+                  "    if (job.status === 'failed') { console.error(job.error); }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/{{jobId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs", "{{jobId}}"]
+            },
+            "description": "Poll until `status` is `done` or `failed`. `stage` runs chunking → chunked → analyzing → indexing → complete.\n\nOn `done` the test script stores `result.video_id` into `{{videoId}}`.\n\nJobs live in memory — a server restart loses job history; vectors and records survive on disk."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"]
+            },
+            "description": "Every job this process has seen."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Videos",
+      "description": "Read what was ingested.",
+      "item": [
+        {
+          "name": "GET /videos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fallback capture: if no videoId is set yet, use the first ingested video.",
+                  "if (pm.response.code === 200) {",
+                  "    const videos = pm.response.json().videos || [];",
+                  "    const current = pm.collectionVariables.get('videoId');",
+                  "    if (!current && videos.length) {",
+                  "        pm.collectionVariables.set('videoId', videos[0].video_id);",
+                  "        console.log('videoId ->', videos[0].video_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos"]
+            },
+            "description": "Ingested videos, built from `records/`. Sets `{{videoId}}` to the first one if it is not already set."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /videos/{video_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}"]
+            },
+            "description": "One video's metadata. **404** for an unknown id."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /videos/{video_id}/chunks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/chunks?limit=50&offset=0&verbose=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "chunks"],
+              "query": [
+                { "key": "analyzer", "value": "{{analyzer}}", "description": "Restrict to one analyzer's output. Omit for all.", "disabled": true },
+                { "key": "after", "value": "60", "description": "Keep chunks overlapping from this second on.", "disabled": true },
+                { "key": "before", "value": "300", "description": "Keep chunks overlapping up to this second.", "disabled": true },
+                { "key": "chunk_ids", "value": "2,4,7", "description": "Comma-separated ids — batch fetch after a detail=minimal search.", "disabled": true },
+                { "key": "limit", "value": "50", "description": "1-500" },
+                { "key": "offset", "value": "0" },
+                { "key": "verbose", "value": "false", "description": "Include internal keys (_frames, _detector_labels, locations)." }
+              ]
+            },
+            "description": "The read counterpart to /query: fetch what an analyzer produced rather than searching it. Served from `records/`, so it costs nothing. Always bounded.\n\n**400** if the video has no output from the requested analyzer (the message lists what it does have) or if `chunk_ids` is not comma-separated integers; **404** for an unknown video."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /videos/{video_id}/chunks/{chunk_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/chunks/{{chunkId}}?verbose=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "chunks", "{{chunkId}}"],
+              "query": [
+                { "key": "verbose", "value": "false", "description": "Include internal keys." }
+              ]
+            },
+            "description": "One chunk with every analyzer's output for it. **404** if the chunk does not exist in that video."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /media/{video_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/media/{{videoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["media", "{{videoId}}"]
+            },
+            "description": "Streams the source file. **404** if the id is unknown or the file has moved since ingestion."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /media/{video_id} (Range request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Range", "value": "bytes=1000000-1000999", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/media/{{videoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["media", "{{videoId}}"]
+            },
+            "description": "With a `Range` header the server returns **206 Partial Content** and `Content-Range` — this is what makes seeking work in a browser.\n\n**416** for a malformed or unsatisfiable range."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Aggregates",
+      "description": "Video-level results and re-running them.",
+      "item": [
+        {
+          "name": "GET /videos/{video_id}/aggregates (all)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/aggregates",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "aggregates"]
+            },
+            "description": "Every stored video-level result: stats, novelty, speaker_stats, sentiment, ner, summary, chapters, events, entities, entity_timelines, cooccurrence, object_entities.\n\nAn aggregator whose analyzer the video lacks is **skipped, not failed**."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /videos/{video_id}/aggregates (one)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/aggregates?aggregator={{aggregator}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "aggregates"],
+              "query": [
+                {
+                  "key": "aggregator",
+                  "value": "{{aggregator}}",
+                  "description": "stats | novelty | speaker_stats | sentiment | ner | summary | chapters | events | entities | entity_timelines | cooccurrence | object_entities"
+                }
+              ]
+            },
+            "description": "One aggregate. `summary` returns tiers finest-first, ending with the whole video.\n\n**400** if the video has no such aggregate (the message lists what it does have); **404** for an unknown video."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /videos/{video_id}/aggregates (re-run)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.job_id) { pm.collectionVariables.set('jobId', body.job_id); }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "aggregators",
+                  "value": "summary,chapters",
+                  "type": "text",
+                  "description": "Comma-separated ids. Disable this field to run all of them."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/aggregates?force=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "aggregates"],
+              "query": [
+                { "key": "force", "value": "true", "description": "Recompute even when already stored. force=false reuses cached results — summary, chapters, events, entities and object_entities each bill API calls." }
+              ]
+            },
+            "description": "Re-run aggregators over already-analysed output. Returns **202** and a `job_id` to poll on `GET /jobs/{job_id}`.\n\nAggregators read `records/`, not the video, so this costs no re-analysis. Aggregates are **cached** — pass `force=true` when testing a change to one, or you will be reading yesterday's output.\n\n**400** for an unknown aggregator id; **404** for an unknown video."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /videos/{video_id}/entities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/videos/{{videoId}}/entities?min_appearances=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["videos", "{{videoId}}", "entities"],
+              "query": [
+                { "key": "min_appearances", "value": "2", "description": "Only people seen in at least this many chunks. Use 2 for people actually followed across the video." }
+              ]
+            },
+            "description": "People linked across chunks, each merged with its timeline when `entity_timelines` has run. Needs the `people` analyzer and the `entities` aggregator."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search & Ask",
+      "description": "POSTs only because their bodies are too complex for a query string — they change nothing.",
+      "item": [
+        {
+          "name": "POST /query (basic)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"text\": \"man in yellow shorts walking toward the registers\",\n  \"video_ids\": null,\n  \"analyzer\": \"default_video\",\n  \"field\": \"combined\",\n  \"limit\": 5,\n  \"score_threshold\": null,\n  \"synthesize\": true,\n  \"detail\": \"standard\",\n  \"filters\": {}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["query"]
+            },
+            "description": "Semantic search over analyzer output, optionally with a synthesised `answer`.\n\n- `field` — `combined` | `description` | `people` | `actions` | `objects`. A chunk missing that field is excluded rather than matched on empty text.\n- `detail` — `minimal` (ids, timecodes, score, 180-char snippet; ~440 tokens for 5 hits) | `standard` (plus description and facets) | `full` (plus text, persons, detections, texts; ~19k tokens for 5 hits).\n- `score_threshold` — cosine similarity always ranks *something*, so without a threshold a query for absent content returns weak neighbours. ~0.55-0.60 separates present from absent on sample data; appearance queries (`field=people`) run lower, ~0.51-0.54.\n\n`answer` is `null` when `synthesize` is false or nothing matched — it is never fabricated from an empty result set.\n\n**400** for an unknown `analyzer`, `field`, `detail`, or filter key."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /query (agent pattern, detail=minimal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"text\": \"someone at the checkout\",\n  \"video_ids\": [\"{{videoId}}\"],\n  \"analyzer\": \"default_video\",\n  \"field\": \"people\",\n  \"limit\": 5,\n  \"score_threshold\": 0.5,\n  \"synthesize\": false,\n  \"detail\": \"minimal\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["query"]
+            },
+            "description": "The agent pattern: search at `detail=minimal` to choose, then `GET /videos/{id}/chunks?chunk_ids=…` to read only the few that matter — roughly 1.6k tokens instead of 19k."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /query (every filter)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"text\": \"people at the checkout counter\",\n  \"analyzer\": \"default_video\",\n  \"field\": \"combined\",\n  \"limit\": 10,\n  \"detail\": \"standard\",\n  \"synthesize\": false,\n  \"filters\": {\n    \"video_ids\": [\"{{videoId}}\"],\n    \"chunk_ids\": [2, 4, 7],\n    \"analyzer_ids\": [\"default_video\"],\n    \"chunk_config\": \"interval:20\",\n    \"objects\": [\"shopping cart\"],\n    \"tags\": [\"checkout\"],\n    \"speakers\": [\"SPEAKER_00\"],\n    \"people\": [\"cashier\"],\n    \"min_people\": 1,\n    \"max_people\": 9,\n    \"after\": 0,\n    \"before\": 300\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["query"]
+            },
+            "description": "Every key in `FILTER_SPEC`, shown together — delete the ones you do not want. This body is deliberately over-constrained and will usually return nothing as-is.\n\n| filter | type | matches |\n|---|---|---|\n| `video_ids` | list[str] | any |\n| `chunk_ids` | list[int] | any |\n| `analyzer_ids` | list[str] | any |\n| `chunk_config` | str | exact |\n| `objects` | list[str] | any |\n| `tags` | list[str] | any |\n| `speakers` | list[str] | any |\n| `people` | list[str] | any |\n| `min_people` | int | >= people_count |\n| `max_people` | int | <= people_count |\n| `after` | float | >= start |\n| `before` | float | <= end |\n\nUnknown keys are a **400** with a suggestion (`Unknown filter 'speaker'; did you mean 'speakers'?`) rather than being ignored, because a dropped filter returns plausible but wrong results."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /ask",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"question\": \"what did the woman in the light gray shirt do\",\n  \"video_ids\": null,\n  \"analyzer\": null,\n  \"limit\": 6\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask"]
+            },
+            "description": "Question answering. `/query` finds segments; this answers questions, which usually needs more than segments.\n\nThe question is **routed** to whichever aggregates can address it:\n\n```\n\"what did the woman in the light gray shirt do\"  -> entities\n\"which segments are unusual\"                     -> novelty\n\"how busy was the store\"                         -> stats\n\"what brands are visible\"                        -> ner\n\"who was with the man in yellow shorts\"          -> cooccurrence, entities\n```\n\nAnswers cite `[video_id start-end]`, and `sources` reports what was consulted. `analyzer: null` lets the server choose.\n\n**400** for an unknown `analyzer`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
