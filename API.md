@@ -42,14 +42,69 @@ what comes back.
 | **Index** | An artifact turned into something retrievable. Declares capabilities via `use_for`: `semantic`, `query`, `aggregate`. |
 | **Shot** | A retrieved moment: a video id + `start`/`end` in seconds + text + score, and a playable stream URL. |
 
-**We build exactly two indexes per video**, both named after their analyzer:
+**We build one index per analyzer**, each named after it. Every analyzer runs on
+VideoDB's own prompt and output shape — we pick only the model tier and the frame
+budget — so the field names below come from the platform, not from a schema of ours:
 
 | Index name | From analyzer | Holds | Good for |
 |---|---|---|---|
-| `transcript` | `spoken_words` | `text`, `words`, `language` | what was **said** |
-| `scene` | `vlm` (schema'd) | `scene_description`, `on_screen_text`, `activity`, `setting.location_type`, `setting.environment`, `visible_objects` | what was **shown** |
+| `transcript_v2` | `spoken_words` | `text` | what was **said** |
+| `scene_v2` | `vlm` | `text` | what was **shown** |
+| `ocr_v2` | `ocr` | `text` | text **on screen** |
+| `objects_v2` | `object_detection` | `summary`, `frames.detections.label`, `frames.detections.score` | what is **in frame** |
+| `activity_v2` | `activity_recognition` | `activity`, `labels`, `actions` | what is **happening** |
+| `location_v2` | `location_detection` | `location`, `location_type`, `setting`, `time_of_day` | **where** it happens |
+| `brands_v2` | `brand_detection` | `brand_names`, `summary` | logos and **sponsorships** |
 
 Because the names are identical across videos, one search can fan out over many of them.
+
+**The VLM runs on its default prompt, so `scene` is prose and nothing else** — a VLM
+given no prompt and no schema writes a description into a single `text` field. The
+longer field lists in the VideoDB docs are what it emits *when you give it a schema*.
+Everything structured comes from the task-specific analyzers instead, which is why
+they are all enabled.
+
+Every analyzer in a run shares one segmentation, so rows from different indexes line
+up on the same `start`/`end` — that is how the studio timeline merges `scene`, `ocr`,
+`objects`, `activity` and `location` into a single strip.
+
+### The `_v2` suffix, and why a name can never be reused
+
+An index name is a **schema contract across the whole collection**. Two videos whose
+artifacts have different field shapes cannot share a name; the second is rejected at
+create time with `index name '…' already exists in this collection with a different
+scene structure`.
+
+**Deleting the index frees the name; deleting the video does not.** Verified against a
+live account:
+
+| Action | Name reusable with a different shape? |
+|---|---|
+| `index.delete()` | **yes** — recreating it with different keys is accepted |
+| `collection.delete_video()` | **no** — the indexes are orphaned but keep holding the name |
+
+That asymmetry is the trap. A deleted video's indexes survive it and stay bound to their
+names, and because nothing can reach them any more (`get_video` returns *Video not
+found*) they can never be deleted — so the name is stuck with its old field shape
+permanently. `DELETE /api/videos/{id}` therefore deletes the indexes *before* the video.
+
+The bare `scene` and `transcript` names are already lost this way, which is what the
+generation suffix is for — `INDEX_GENERATION` in the backend settings and
+`INDEX_GENERATION` in `frontend/lib/videodb/indexes.ts`, which **must match**. Bump both
+to claim a fresh set after any change to the analyzer configuration.
+
+**`fields` does not help here.** It is tempting to think declaring
+`fields={"semantic": ["text"], "filter": []}` pins the contract. It does not: `fields`
+chooses which *stored* fields get retrieval optimisation, while VideoDB stores every
+key on the record regardless, and the contract is on what is stored. Verified live —
+two record sets declaring identical `fields`, differing only by an extra `words` key,
+and the second was rejected. Hence `PINNED_FIELDS` in `ingest.py`, which projects the
+records themselves before indexing.
+
+A new collection would also work — the contract is scoped to one collection, and
+`conn.create_collection()` is available. It is not worth the migration: it would mean
+plumbing a collection id through `clients.py` and re-ingesting every video, to gain two
+tidier names. Everything therefore stays in the account's default collection.
 
 ---
 
@@ -339,8 +394,8 @@ A dotted path targets **one field's** embeddings instead of the whole record —
 tool in the retrieval API:
 
 ```python
-index_names=["scene.setting.location_type"]
 index_names=["scene.scene_description"]
+index_names=["location.location_type"]
 ```
 
 Singular `index_name` / `index_id` are **not** accepted here — only the plural forms.
@@ -355,10 +410,10 @@ No natural-language interpretation. Exactly one index.
 ```jsonc
 {
   "video_id": "m-abc123",
-  "index_name": "scene",
+  "index_name": "objects",
   "filter": [
-    { "field": "setting.environment", "op": "==", "value": "outdoor" },
-    { "field": "activity", "op": "in", "value": ["conversation", "presentation"] }
+    { "field": "frames.detections.label", "op": "==", "value": "laptop" },
+    { "field": "frames.detections.score", "op": ">", "value": 0.8 }
   ],
   "limit": 50
 }
@@ -373,8 +428,11 @@ read `index.field_schema[field].operators` rather than guessing). A list of cond
 ANDed; `and` / `or` / `not` compose. A dotted path crossing a list matches when **any**
 element satisfies it.
 
-Filterable fields on our `scene` index: `activity`, `setting.location_type`,
-`setting.environment`, `visible_objects`.
+Which fields are filterable is derived from the data at index time rather than declared
+by us — read `index.field_schema[field].operators` rather than guessing. In practice the
+short-label fields are the useful ones: `activity` on `scene` and `activity`,
+`location_type` / `time_of_day` on `location`, `frames.detections.label` on `objects`,
+`brand_names` on `brands`.
 
 > `query()` needs stored rows but not embeddings, so it works on a `building` index once
 > ingest lands — but immediately after `index()` there may be no rows at all.

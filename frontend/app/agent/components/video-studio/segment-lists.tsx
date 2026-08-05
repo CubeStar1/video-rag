@@ -97,14 +97,7 @@ function SceneRow({
     [isSelected, transcript, scene.start, scene.end]
   )
 
-  // Activity and location both fall back to "other" — dedupe so it shows once.
-  const tags = Array.from(
-    new Set(
-      [scene.activity, scene.setting?.location_type, scene.setting?.environment].filter(
-        Boolean
-      ) as string[]
-    )
-  )
+  const tags = scene.tags ?? []
 
   return (
     <li ref={ref}>

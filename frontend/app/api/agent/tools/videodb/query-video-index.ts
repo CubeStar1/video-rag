@@ -2,17 +2,23 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { videodb } from '@/lib/videodb/backend-client'
 import { formatRange } from '@/lib/videodb/format'
+import { INDEX_CATALOGUE, INDEX_NAMES } from '@/lib/videodb/indexes'
 
 export const queryVideoIndexTool = tool({
   description:
-    'Filter indexed moments on exact field values — no natural-language interpretation. Use for precise attribute questions ("every outdoor scene", "scenes tagged conversation"). The "scene" index has fields: activity, setting.location_type, setting.environment, visible_objects, scene_description, on_screen_text.',
+    'Filter indexed moments on exact field values — no natural-language interpretation. Use for precise attribute questions ("every outdoor scene", "every moment showing a laptop"). Pick the index that owns the attribute, then filter on one of its fields. ' +
+    `Indexes: ${INDEX_CATALOGUE}.`,
   inputSchema: z.object({
     video_id: z.string().describe('VideoDB video id'),
-    index_name: z.enum(['scene', 'transcript']).describe('Index to filter'),
+    index_name: z.enum(INDEX_NAMES).describe('Index to filter'),
     filter: z
       .array(
         z.object({
-          field: z.string().describe('Field path, e.g. "setting.environment"'),
+          field: z
+            .string()
+            .describe(
+              'Field path on that index, e.g. "activity" or "frames.detections.label"'
+            ),
           op: z
             .enum(['==', '!=', 'contains', 'in', 'exists'])
             .describe('Comparison operator'),

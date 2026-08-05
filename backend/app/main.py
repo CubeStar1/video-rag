@@ -1,15 +1,13 @@
-import logging
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.logging_config import configure_logging
 from app.routers import retrieval, videos
 from app.schemas import HealthResponse
 
-logging.basicConfig(level=logging.INFO)
-
 settings = get_settings()
+configure_logging(settings.log_level)
 
 app = FastAPI(
     title="Video RAG API",

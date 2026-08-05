@@ -39,12 +39,15 @@ def ingest(request: IngestRequest, background: BackgroundTasks) -> IngestRespons
     try:
         video = ingest_service.upload_video(request.source_url, request.title)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Upload failed for %s", request.source_url)
+        logger.error("upload failed for %s: %s", request.source_url, exc)
+        logger.debug("upload traceback", exc_info=True)
         update_video_row(
             request.db_video_id,
             {"status": "failed", "error": str(exc), "index_status": {"step": "failed"}},
         )
         raise HTTPException(status_code=502, detail=f"VideoDB upload failed: {exc}") from exc
+
+    logger.info("uploaded %r → %s", request.title or request.source_url, video.id)
 
     payload = ingest_service.video_payload(video)
     update_video_row(
@@ -141,6 +144,7 @@ def reindex(
         if request and request.segmentation
         else None
     )
+    logger.info("reindex requested for %s", videodb_video_id)
     background.add_task(
         ingest_service.run_indexing_pipeline, videodb_video_id, db_video_id, segmentation
     )
@@ -167,10 +171,26 @@ def reindex(
 
 @router.delete("/{videodb_video_id}")
 def delete(videodb_video_id: str) -> dict[str, bool]:
+    # Drop the indexes first. An index name is a schema contract for the collection,
+    # and deleting a video does *not* cascade to its indexes — they are orphaned but
+    # keep holding their names, so that name can never take a different field shape
+    # again and nothing can reach the index to free it. Deleting them here keeps the
+    # names reusable. Verified: index.delete() frees a name, delete_video() does not.
+    try:
+        for index in get_video(videodb_video_id).list_indexes() or []:
+            try:
+                index.delete()
+            except Exception:  # noqa: BLE001 - a stuck index must not block the delete
+                logger.warning("could not delete index %s on %s", index.name, videodb_video_id)
+    except Exception:  # noqa: BLE001 - the video may already be gone
+        logger.debug("could not list indexes for %s", videodb_video_id, exc_info=True)
+
     try:
         get_collection().delete_video(videodb_video_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Delete failed: {exc}") from exc
+
+    logger.info("deleted %s and its indexes", videodb_video_id)
     return {"deleted": True}
 
 

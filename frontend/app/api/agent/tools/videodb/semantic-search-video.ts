@@ -2,10 +2,12 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { videodb } from '@/lib/videodb/backend-client'
 import { formatRange } from '@/lib/videodb/format'
+import { INDEX, INDEX_CATALOGUE } from '@/lib/videodb/indexes'
 
 export const semanticSearchVideoTool = tool({
   description:
-    'Vector search against a named index. Use instead of search_video_moments when you know whether the answer is in the speech ("transcript") or in what is visible ("scene"), or when you need a relevance floor. Available index names: "transcript", "scene". You can target one field with a dotted path, e.g. "scene.setting.location_type".',
+    'Vector search against a named index. Use instead of search_video_moments when you know which signal holds the answer, or when you need a relevance floor. You can target one field with a dotted path, ' +
+    `e.g. "${INDEX.location}.location_type". Indexes: ${INDEX_CATALOGUE}.`,
   inputSchema: z.object({
     video_ids: z.array(z.string()).min(1).describe('VideoDB video ids to search'),
     query: z.string().describe('Descriptive natural-language query'),

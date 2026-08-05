@@ -45,6 +45,21 @@ def _fan_out(video_ids: Iterable[str], fn: Callable[[str], T]) -> tuple[list[T],
     return results, errors
 
 
+def _shot_text(shot: Shot) -> str | None:
+    """The snippet to show for a matched moment.
+
+    `shot.text` is only filled in when the matching index's own text field was named
+    in `return_fields` — an `ocr` hit comes back with `text=None` otherwise. The
+    matched text is in the metadata either way, under `embedded_text`, so read that
+    rather than asking for `return_fields="all"`, which would drag the whole `frames`
+    payload off the objects index into every response.
+    """
+    if shot.text:
+        return shot.text
+    embedded = (shot.metadata or {}).get("embedded_text")
+    return str(embedded) if embedded else None
+
+
 def _shot_out(shot: Shot, *, with_stream: bool = True) -> ShotOut:
     stream_url = shot.stream_url
     if with_stream and not stream_url:
@@ -58,7 +73,7 @@ def _shot_out(shot: Shot, *, with_stream: bool = True) -> ShotOut:
         video_title=shot.video_title,
         start=float(shot.start or 0),
         end=float(shot.end or 0),
-        text=shot.text,
+        text=_shot_text(shot),
         score=float(shot.search_score) if shot.search_score is not None else None,
         stream_url=stream_url,
         player_url=shot.player_url or player_url(stream_url),
@@ -197,8 +212,9 @@ def query_index(
         "limit": limit,
         "sort": sort,
     }
-    # Nested objects and lists (setting, visible_objects) live outside the searchable
-    # groups — `return_fields` is the only way to read them back off a shot.
+    # Nested objects and lists (objects' `frames.detections`, brands' `detections`) live
+    # outside the searchable groups — `return_fields` is the only way to read them back
+    # off a shot.
     if return_fields is not None:
         kwargs["return_fields"] = return_fields
     result = video.query(**kwargs)
