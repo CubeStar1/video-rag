@@ -1,54 +1,79 @@
 \section{Solution Overview}
 
-FalconVQA handles a video in five steps: split it into chunks, analyze each chunk,
-index the results, roll them up into video-level summaries, then search or ask
-questions. Most steps have more than one setting, because footage varies too much for
-one fixed choice to work everywhere.
+FalconVQA processes a recording in five stages: the video is partitioned into chunks,
+each chunk is analysed, the resulting records are indexed, video-level aggregates are
+derived from those records, and the indexed material is then queried by search or by
+question. Most stages are parameterised rather than fixed, because surveillance
+footage varies too widely for a single configuration to be appropriate in all cases.
 
-\optfigure{video-mind-arch.png}{FalconVQA system architecture.}{1.0}
+\optfigure{falcon-vqa-arch.png}{FalconVQA system architecture: client and agent tier,
+core analysis service, persistence, deployment targets, and the five-phase processing
+pipeline.}{1.0}{fig:arch}
 
-\subsection{Splitting the video}
+\subsection{Partitioning the Recording}
 
-We cut the video where something changes. Four detectors look for that: a change of
-speaker, a stretch of silence, a hard cut, and a shift in what the frame looks like.
-Their scores are combined and the strongest peaks become the cut points.
+The recording is cut where its content changes. Four boundary detectors contribute
+evidence for a cut: a change of speaker, a period of silence, a hard scene cut, and a
+shift in the visual content of the frame. Their scores are fused under a weighting, and
+the strongest peaks of the fused signal are taken as boundaries.
 
-If a signal isn't there at all, its share is passed to the ones that did fire. This
-matters more than it sounds: on a fixed camera there are no cuts and often no speech,
-and without that adjustment the whole clip comes back as one chunk. There are two
-other modes for when this isn't wanted --- supply your own weighting, or just cut
-every $N$ seconds.
+Where a signal produces no events at all, its weight is redistributed across the
+signals that did fire. This behaviour is essential rather than incidental: fixed-camera
+footage contains no hard cuts and frequently no speech, and without redistribution the
+entire recording is returned as a single chunk. Two further modes are provided for
+cases in which fusion is not wanted --- a caller-supplied weighting, or fixed spans of
+$N$ seconds with no detectors run at all.
 
-The chunking settings are stored alongside the results, so the same video can be
-indexed coarsely and finely at the same time, and a search picks whichever it needs.
+The chunking configuration is stored alongside the resulting records, so that a single
+recording may be indexed both coarsely and finely at the same time, with a query
+resolving against whichever indexing is appropriate.
 
-\subsection{Analysing each chunk}
+\subsection{Analysing Each Chunk}
 
-You pick which analyzers to run when you upload, because they do not cost the same.
-There is one for describing the scene, one for people, one for objects, one for
-on-screen text, and one for speech.
+The analyzers to be run are selected at upload time, because their costs differ by
+orders of magnitude. Six analyzers are provided: scene description, per-person
+description, object detection, on-screen text recognition, transcription, and
+speaker-attributed transcription. Transcription and speaker-attributed transcription
+are mutually exclusive, as the latter is a strict superset of the former.
 
-The vision model is the expensive part, so cheap detectors run first and act as a
-filter. If YOLO sees nothing in a frame and EasyOCR finds no text, that frame is never
-sent. Frames are also deduplicated: we keep a frame only if it looks different enough
-from the last one we kept. The threshold adapts, with a ceiling --- a fixed value kept
-just one frame on a static camera, and a purely relative one started picking up
-compression noise. Frames are read in order rather than seeked to, which measured
-about $22\times$ faster.
+The vision--language model is the dominant cost, so inexpensive detectors are run first
+and act as gates. If YOLO detects no object in a frame and EasyOCR finds no text, that
+frame is never submitted to the vision model. Frames are additionally deduplicated: a
+frame is retained only if it differs sufficiently from the last frame retained. The
+similarity threshold is adaptive with an absolute ceiling, a configuration arrived at
+by measurement --- a fixed threshold retained a single frame on a static camera, and a
+purely relative threshold began selecting compression noise. Frames are read
+sequentially rather than by seeking, which was measured to be approximately
+$22\times$ faster.
 
-\subsection{Searching and asking}
+\subsection{Indexing and Aggregation}
 
-Each chunk is stored as several separate vectors instead of one: the full record, the
-scene description, the people, the actions, the objects. So a search about what
-someone looked like is matched against a short description of a person, rather than
-competing with everything else said about that chunk. Searches can be filtered by
-time, objects, tags, people and so on, and can return more or less detail depending on
-who is reading them.
+Each chunk is stored as a single point carrying five separately embedded vectors rather
+than one: the complete flattened record, the scene description, the people, the
+actions, and the objects. A query concerning a person's appearance is therefore matched
+against a short description of a person rather than competing against everything else
+recorded for that chunk. Embeddings are computed locally, and each point carries a
+typed payload against which structured filters are applied.
 
-Questions take a different path. Rather than searching chunks and hoping, the question
-is matched to the video-level summaries that can actually answer it: the entity
-narratives for a question about a person, novelty for ``anything odd here'', the
-statistics for ``how busy was it''.
+Twelve aggregators then run over the saved analyzer output --- not over the video ---
+in an order derived from their declared dependencies. They produce the video-level
+material: statistics, novelty, speaker statistics, summary, chapters, events, named
+entities, sentiment, linked person entities, linked object entities, entity timelines
+and co-occurrence. Because they consume stored records, re-running an aggregator incurs
+no re-analysis; results are cached and recomputed only on demand or when the analyzer
+set changes.
 
-Either way the operator types a description and gets back ranked moments with
-\texttt{mm:ss} timecodes. Clicking one plays the video from that point.
+\subsection{Search and Question Answering}
+
+Searches may be restricted by time, objects, tags, people and other typed filters, and
+return one of three levels of response detail, selected according to whether the
+consumer is a human reader or a token-metered agent.
+
+Questions follow a different path. Rather than searching chunks and synthesising from
+whatever is returned, the question is routed to the video-level aggregates capable of
+answering it: the entity narratives for a question about a person, novelty for a
+question about anomalies, statistics for a question about activity levels.
+
+In both cases the operator supplies a natural-language description and receives ranked
+moments carrying \texttt{mm:ss} timecodes. Selecting a result begins playback of the
+recording at that point.

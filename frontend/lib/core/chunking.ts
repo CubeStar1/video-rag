@@ -23,7 +23,7 @@ export const ANALYZER_CATALOGUE: {
     id: 'default_video',
     label: 'Scene description',
     description: 'What is happening: description, setting, people, objects, actions, tags.',
-    billed: true,
+    billed: false,
   },
   {
     id: 'transcript',
@@ -41,19 +41,19 @@ export const ANALYZER_CATALOGUE: {
     id: 'ocr',
     label: 'On-screen text',
     description: 'Text visible in frame. Gated on cheap detection, so blank frames cost nothing.',
-    billed: true,
+    billed: false,
   },
   {
     id: 'people',
     label: 'People',
     description: 'Per person: appearance, clothing, role, action. Required for entity linking.',
-    billed: true,
+    billed: false,
   },
   {
     id: 'object_detection',
     label: 'Objects',
     description: 'Objects with their appearance and purpose, gated on a detector.',
-    billed: true,
+    billed: false,
   },
 ]
 

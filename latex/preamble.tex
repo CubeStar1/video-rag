@@ -28,20 +28,21 @@
 \renewcommand{\arraystretch}{1.25}
 
 % Include a figure only if the file is present, so the report compiles
-% before the images have been dropped in.
-\newcommand{\optfigure}[3]{%
+% before the images have been dropped in. Arguments: filename, caption,
+% width as a fraction of \textwidth, label.
+\newcommand{\optfigure}[4]{%
   \IfFileExists{images/#1}{%
     \begin{figure}[htbp]
       \centering
       \includegraphics[width=#3\textwidth]{#1}
-      \caption{#2}
+      \caption{#2}\label{#4}
     \end{figure}%
   }{%
     \begin{figure}[htbp]
       \centering
       \fbox{\parbox[c][3.5cm][c]{0.8\textwidth}{\centering\itshape
         Missing figure: \texttt{images/#1}}}
-      \caption{#2}
+      \caption{#2}\label{#4}
     \end{figure}%
   }%
 }

@@ -1,54 +1,101 @@
 \section{Creative Enhancements}
 
-Most of these came out of something failing on real footage. They are what separates
-the system from a straightforward ``chunk the video and embed the captions'' pipeline.
+The enhancements recorded below were, in most cases, adopted in response to a
+measured failure on real footage. Collectively they are what distinguishes the system
+from a conventional ``partition the video and embed the captions'' pipeline. Each is
+annotated with the requirement it primarily serves.
 
 \begin{table}[htbp]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lL{3.6cm}X@{}}
+\begin{tabularx}{\textwidth}{@{}lL{3.5cm}XL{1.3cm}@{}}
 \toprule
-\textbf{\#} & \textbf{Enhancement} & \textbf{Why it matters} \\
+\textbf{\#} & \textbf{Enhancement} & \textbf{Rationale} & \textbf{Serves} \\
 \midrule
 E-1 & Multi-signal chunking with weight redistribution &
-Four detectors vote on where to cut, and a signal that never fires gives its share to
-the ones that did. Without this, fixed-camera footage returns as a single chunk. \\
-E-2 & Several chunkings of one video at once &
-Chunk settings are stored with the results, so a video can be indexed coarsely and
-finely at the same time and a search uses whichever suits it. \\
-E-3 & Multiple vectors per chunk &
-Description, people, actions and objects are embedded separately, so a query about
-someone's appearance is matched against a short person description instead of
-competing with everything else in that chunk. \\
-E-4 & Cheap detectors used as gates &
-YOLO and EasyOCR decide whether a frame is worth sending to the vision model. Frames
-with nothing to see or read never cost anything. \\
-E-5 & Detector labels hidden from the vision model &
-YOLO called a thermal-imaged tank an ``airplane'' with 0.73 confidence. Showing it the
-boxes without the labels, the vision model said ``tank''. \\
+Four detectors contribute evidence for each cut, and a signal that produces no events
+cedes its weight to the signals that did. Without this, fixed-camera footage is
+returned as a single chunk, and a preset degenerates into a granularity dial: on
+single-signal footage the \texttt{audio} and \texttt{video} presets yielded 12 and 63
+boundaries respectively from identical content. & NFR-6 \\
+E-2 & Concurrent chunkings of one recording &
+The chunk configuration is stored with the records, so a recording may be indexed
+coarsely and finely simultaneously and a query resolves against whichever is
+appropriate. & FR-11 \\
+E-3 & Five named vectors per chunk &
+Description, people, actions and objects are embedded separately alongside the
+combined record, so a query about a person's appearance is matched against a short
+person description rather than competing with everything else recorded for that chunk.
+& FR-4 \\
+E-4 & Inexpensive detectors used as gates &
+YOLO and EasyOCR determine whether a frame merits submission to the vision--language
+model. Frames containing nothing to see or read incur no model cost. & NFR-7 \\
+E-5 & Detector labels withheld from the vision model &
+YOLO classified a thermally imaged tank as an ``airplane'' with 0.73 confidence. Shown
+the same bounding boxes without labels, the vision model reported a tank. A label
+rendered onto the image invites agreement with it. & NFR-5 \\
 E-6 & Adaptive frame sampling &
-Frames are kept by how different they are from the last one kept. A fixed threshold
-kept one frame on a static camera; a purely relative one collected compression noise. \\
-E-7 & Questions routed to summaries, not chunks &
-A question is matched to the video-level output that can answer it --- entities for a
-person, novelty for ``anything odd'', statistics for ``how busy'' --- rather than
-searching segments and hoping. \\
+Frames are retained according to their dissimilarity from the last frame retained. A
+fixed threshold of 0.95 retained one frame on a static camera, whose consecutive
+similarity median was 0.9955; a purely relative threshold selected compression noise.
+Both were measured. & NFR-2 \\
+E-7 & Questions routed to aggregates &
+A question is directed to the video-level output capable of answering it --- entities
+for a person, novelty for anomalies, statistics for activity levels --- rather than
+searching segments and synthesising from whatever is returned. & FR-6 \\
 E-8 & Constrained entity linking &
-People are clustered on appearance under hard constraints (two people visible in the
-same chunk cannot be the same person) \emph{before} an LLM writes anything. Asked to
-match people directly, an LLM merges anyone in dark clothing. \\
-E-9 & Selectable response detail &
-The same search returns a few hundred tokens or tens of thousands. A person wants
-everything; an agent pays per token. \\
-E-10 & Self-describing API &
-One endpoint returns every analyzer, field and filter the system supports, so an LLM
-agent can discover what it can ask instead of being hard-coded against it. \\
-E-11 & Content-addressed videos &
-A video is identified by the hash of its bytes, so the same file uploaded twice is
-recognised as the same video and never processed or stored twice. \\
-E-12 & Agentic front end with clip artifacts &
-Results open in a side panel as a playable clip reel, so ``show me every time someone
-went behind the counter'' produces something you can watch end to end. \\
+People are clustered on appearance under hard constraints --- two people visible in the
+same chunk cannot be the same person --- \emph{before} an LLM writes any narrative.
+Asked to match people directly, an LLM merges anyone in dark clothing. The signature is
+clothing alone: blending in the appearance field dragged same-person scores to
+0.69--0.87, because it drifts and occasionally carries meta-commentary that the
+embedding treats as content. & FR-8 \\
+E-9 & Object linking with fixture suppression &
+Object entities reuse the same constrained clusterer with two additional filters:
+static fixtures such as counters and shelves are counted but not tracked, since ``the
+counter was present throughout'' is true of every frame and informs no search; and
+person-like detections are handed to the people aggregator, which has clothing with
+which to identify them. & FR-8 \\
+E-10 & Selectable response detail &
+The same search returns a few hundred tokens or tens of thousands. Five full hits were
+measured at approximately 19{,}000 tokens against approximately 440 at
+\texttt{minimal}. A human reader wants the whole record; an agent pays per token. &
+NFR-7 \\
+E-11 & Self-describing API &
+A single endpoint returns every analyzer, vector field, filter and aggregator the
+installation supports, so a client or an LLM agent discovers what may be asked instead
+of being hard-coded against it. The upload dialog builds its analyzer list from this
+endpoint, so that adding an analyzer remains a change to one module and one registry
+line. & FR-12, NFR-8 \\
+E-12 & Content-addressed recordings &
+A recording is identified by the hash of its bytes, so the same file submitted twice is
+recognised as the same recording and is neither processed nor stored again. No local
+path is ever persisted; the cached file is re-derived from the content hash and
+re-downloaded if the cache is cold. & NFR-10 \\
+E-13 & Registry-driven composition &
+Analyzers and aggregators are declared in registries and discovered from them. No part
+of ingestion, storage or the API names a specific analyzer, and an aggregator whose
+analyzer is absent is skipped rather than failed. & NFR-8 \\
+E-14 & Project-scoped agent tools &
+The analysis service has no notion of users; every agent tool therefore resolves the
+recordings it is permitted to reach through a single scoping function bound to the
+caller's project. A model that fabricates a video identifier, or repeats one from
+another conversation, has it filtered out rather than answered from another operator's
+footage. & NFR-9 \\
+E-15 & Job reconciliation with lost-job recovery &
+Ingestion returns immediately and proceeds on a background thread, so progress is
+obtained by polling. One reconciliation routine converts a job into a database row for
+every route that needs it. Because jobs are held in memory, a restart mid-ingest is
+detected and the recording is either recovered from its persisted records or failed
+explicitly, so that re-indexing becomes the route forward. & NFR-3 \\
+E-16 & Clips as ranges, not files &
+A clip is a time range over one recording rather than a stream of its own: the panel
+loads the MP4 once and seeks, so several moments drawn from the same recording share a
+single load and no clip needs to be rendered. & NFR-4 \\
+E-17 & Poster frame written at ingest &
+One JPEG is written per recording at a fixed fraction of its duration, so a workspace
+listing twenty recordings does not require twenty browsers to range-request an MP4 in
+order to decode a single frame. & NFR-1 \\
 \bottomrule
 \end{tabularx}
 \end{table}

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.23)  5 AUG 2026 22:26
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.23)  5 AUG 2026 23:58
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -256,24 +256,24 @@ File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
 ) (report.aux)
 \openout1 = `report.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 19.
-LaTeX Font Info:    ... okay on input line 19.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 21.
+LaTeX Font Info:    ... okay on input line 21.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -334,7 +334,7 @@ Package grfext Info: Graphics extension search list:
  (C:\Users\avina\AppData\Local\Programs\MiKTeX\tex/latex/00miktex\epstopdf-sys.cfg
 File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
 ))
-Package hyperref Info: Link coloring OFF on input line 19.
+Package hyperref Info: Link coloring OFF on input line 21.
  (report.out) (report.out)
 \@outlinefile=\write3
 \openout3 = `report.out'.
@@ -342,11 +342,11 @@ Package hyperref Info: Link coloring OFF on input line 19.
 Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: End \AtBeginDocument code.
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <12> on input line 21.
+(Font)              <12> on input line 23.
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <8> on input line 21.
+(Font)              <8> on input line 23.
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <6> on input line 21.
+(Font)              <6> on input line 23.
  (report.toc
 LaTeX Font Info:    External font `cmex10' loaded for size
 (Font)              <10.95> on input line 2.
@@ -356,52 +356,66 @@ LaTeX Font Info:    External font `cmex10' loaded for size
 
  (sections/01-problem.tex [1
 
-{C:/Users/avina/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}]) (sections/02-solution.tex
-<images/video-mind-arch.png, id=132, 2483.2775pt x 1702.36pt>
-File: images/video-mind-arch.png Graphic file (type png)
-<use images/video-mind-arch.png>
-Package pdftex.def Info: images/video-mind-arch.png  used on input line 8.
-(pdftex.def)             Requested size: 452.9679pt x 310.51576pt.
- [2] [3 <./images/video-mind-arch.png>]) (sections/03-requirements.tex) [4] [5] (sections/04-enhancements.tex) [6
+{C:/Users/avina/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}] [2]) (sections/02-solution.tex
+<images/falcon-vqa-arch.png, id=176, 843.75224pt x 560.0925pt>
+File: images/falcon-vqa-arch.png Graphic file (type png)
+<use images/falcon-vqa-arch.png>
+Package pdftex.def Info: images/falcon-vqa-arch.png  used on input line 11.
+(pdftex.def)             Requested size: 452.9679pt x 300.6849pt.
+ [3 <./images/falcon-vqa-arch.png>]) (sections/03-requirements.tex [4]) [5] [6] (sections/04-enhancements.tex
 
-] (sections/05-architecture.tex [7
+LaTeX Warning: Float too large for page by 385.69313pt on input line 101.
 
-]
-<images/video-mind-tech.png, id=170, 796.1745pt x 334.851pt>
+) [7
+
+] [8] (sections/05-architecture.tex
+Overfull \hbox (8.2599pt too wide) in paragraph at lines 89--89
+[]|\OT1/cmtt/m/n/10 app/api/agent/tools/|  
+ []
+
+[9
+
+] [10]
+<images/video-mind-tech.png, id=223, 796.1745pt x 334.851pt>
 File: images/video-mind-tech.png Graphic file (type png)
 <use images/video-mind-tech.png>
-Package pdftex.def Info: images/video-mind-tech.png  used on input line 105.
+Package pdftex.def Info: images/video-mind-tech.png  used on input line 180.
 (pdftex.def)             Requested size: 452.9679pt x 190.50938pt.
- [8] [9 <./images/video-mind-tech.png>]) [10] (sections/06-ui-acceptance.tex
-<images/video-mind-ui.jpeg, id=188, 1606.0pt x 817.0525pt>
-File: images/video-mind-ui.jpeg Graphic file (type jpg)
-<use images/video-mind-ui.jpeg>
-Package pdftex.def Info: images/video-mind-ui.jpeg  used on input line 8.
-(pdftex.def)             Requested size: 452.9679pt x 230.44374pt.
- [11
+ [11] [12 <./images/video-mind-tech.png>] [13]) [14] (sections/06-ui-acceptance.tex
+<images/falcon-vqa-ui-design.png, id=248, 924.45375pt x 591.4095pt>
+File: images/falcon-vqa-ui-design.png Graphic file (type png)
+<use images/falcon-vqa-ui-design.png>
+Package pdftex.def Info: images/falcon-vqa-ui-design.png  used on input line 15.
+(pdftex.def)             Requested size: 452.9679pt x 289.78416pt.
+ [15
 
- <./images/video-mind-ui.jpeg>]) [12] (sections/07-execution.tex) [13
+ <./images/falcon-vqa-ui-design.png>] [16] [17]) [18] (sections/07-execution.tex
+Underfull \hbox (badness 7722) in paragraph at lines 42--42
+[]|\OT1/cmr/m/n/10 Authentication and row-level se-cu-rity, projects and
+ []
 
-] (report.aux)
+) [19
+
+] [20] (report.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-11-06>
  ***********
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: AB1B64CE9FFF584A2181057974138E72;3854.
+(rerunfilecheck)             Checksum: 97EE88FBD9BAEBDEAC9F04502BCFF4F8;5036.
  ) 
 Here is how much of TeX's memory you used:
- 11762 strings out of 467871
- 190495 string characters out of 5418375
- 625923 words of memory out of 5000000
- 40443 multiletter control sequences out of 15000+600000
- 634103 words of font info for 61 fonts, out of 8000000 for 9000
+ 11801 strings out of 467871
+ 191100 string characters out of 5418375
+ 635660 words of memory out of 5000000
+ 40461 multiletter control sequences out of 15000+600000
+ 634271 words of font info for 62 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 80i,11n,82p,338b,570s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 80i,11n,82p,538b,587s stack positions out of 10000i,1000n,20000p,200000b,200000s
  <C:\Users\avina\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm1095.pk><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/avina/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on report.pdf (13 pages, 4913025 bytes).
+Output written on report.pdf (20 pages, 1183774 bytes).
 PDF statistics:
- 260 PDF objects out of 1000 (max. 8388607)
- 53 named destinations out of 1000 (max. 500000)
- 208 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 338 PDF objects out of 1000 (max. 8388607)
+ 74 named destinations out of 1000 (max. 500000)
+ 264 words of extra memory for PDF output out of 10000 (max. 10000000)
 

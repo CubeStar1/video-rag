@@ -2,38 +2,51 @@
 
 \subsection{Schedule}
 
+Development proceeds in eight phases. Each phase is validated end to end before the
+next is begun, so that a defect in an earlier stage is not discovered through the
+behaviour of a later one.
+
 \begin{table}[htbp]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}L{1.9cm}L{4.2cm}X@{}}
+\begin{tabularx}{\textwidth}{@{}L{1.9cm}L{4.0cm}X@{}}
 \toprule
 \textbf{Phase} & \textbf{Stage} & \textbf{Work} \\
 \midrule
 Phase 1 & Chunking &
-Boundary detectors, weighted fusion, the three chunking modes, duration bounds.
-Validated on cut-free footage before anything was built on top. \\
+Boundary detectors, weighted fusion, the three chunking modes and the duration bounds.
+Validated on cut-free footage before anything was built upon it. \\
 Phase 2 & Analysis &
-Scene, people, object, text and speech analyzers; frame sampling; detector gating;
-the registry that makes them interchangeable. \\
+Scene, people, object, text and speech analyzers; frame sampling; detector gating; and
+the registry that renders them interchangeable. \\
 Phase 3 & Indexing and retrieval &
-Embedding, named vectors, the filter set, detail levels, search endpoint. \\
+Local embedding, the five named vectors, the typed filter set, response detail levels
+and the search endpoint. \\
 Phase 4 & Aggregation &
-Video-level output, dependency ordering, caching, entity and object linking. \\
+Video-level output, dependency ordering, caching, and person and object entity
+linking. \\
 Phase 5 & Question answering &
-Routing questions to the right aggregates, answer synthesis with citations. \\
-Phase 6 & Interface &
-Workspace, upload and status, agent chat, clip panel, playback. \\
-Phase 7 & Hardening and documentation &
-Acceptance tests on a live server, error handling, API documentation, this report. \\
+Routing of questions to the aggregates capable of answering them, and answer synthesis
+with mandatory citations. \\
+Phase 6 & Application tier &
+Authentication and row-level security, projects and workspace, upload and status
+reconciliation, the agent tool layer, clip reel and timeline studio, and the
+per-recording detail view. \\
+Phase 7 & Documentation &
+The MDX documentation site --- concepts, workspace guides and the complete API
+reference --- and the public landing pages. \\
+Phase 8 & Hardening and reporting &
+Acceptance tests against a live server, error handling, deployment, and this document.
+\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \subsection{Distribution of Work}
 
-The project is built by two people. The split follows the pipeline: everything from a
-recording arriving to it being chunked and stored on one side, everything from a chunk
-being analysed to a question being answered on the other.
+The project is undertaken by two members. The division follows the pipeline:
+everything from a recording arriving to its being chunked and stored on one side, and
+everything from a chunk being analysed to a question being answered on the other.
 
 \begin{table}[htbp]
 \centering
@@ -43,16 +56,18 @@ being analysed to a question being answered on the other.
 \textbf{Member} & \textbf{Responsibility} \\
 \midrule
 Avinash Anish &
-\textbf{Frontend and ingestion.} The whole interface --- workspace, upload and status,
-agent chat, clip panel and playback --- together with the agent tool layer. On the
-pipeline side, ingestion: source handling, storage and caching, content-addressed
-video identity, the boundary detectors, weighted fusion and the three chunking modes,
-and the background job and progress reporting behind them. \\
+\textbf{Application tier and ingestion.} The entire interface --- authentication,
+projects and workspace, upload and status, agent chat, clip reel panel, timeline studio
+and the recording detail view --- together with the agent tool layer and its project
+scoping. On the pipeline side, ingestion: source handling, object storage and caching,
+content-addressed identity, the four boundary detectors, weighted fusion and the three
+chunking modes, and the background job and progress reporting behind them. \\
 Vaivaswat Verma &
-\textbf{Backend and retrieval.} Everything downstream of chunking: the analyzers and
-their frame sampling and detector gating, embedding and the vector store, filters and
-detail levels, the video-level aggregators including entity and object linking, and
-question routing and answer synthesis. Owns the HTTP API these are exposed through. \\
+\textbf{Analysis service and retrieval.} Everything downstream of chunking: the
+analyzers with their frame sampling and detector gating, embedding and the vector
+store, filters and detail levels, the video-level aggregators including person and
+object entity linking, and question routing and answer synthesis. Owns the HTTP API
+through which these are exposed. \\
 \midrule
 Shared &
 Architecture and design decisions, acceptance testing against a live server,
