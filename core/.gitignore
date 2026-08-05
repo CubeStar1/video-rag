@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Everything the app writes: vector store, per-video records, uploaded videos,
+# downloaded model weights. All regenerable; deleting data/ is a full reset.
+data/
+
+# Test media is large and usually local to a machine. Drop this line if you
+# want a shared fixture set committed.
+media/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Model caches these libraries create outside data/
+.paddlex/
+runs/
+*.pt
+
+# Logs and scratch
+*.log
+.frames/

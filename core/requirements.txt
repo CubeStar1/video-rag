@@ -1,0 +1,48 @@
+# VideoMind — pinned to a verified working set on Python 3.13 + CUDA 13.0.
+#
+# Install torch first, from the PyTorch index matching your CUDA version:
+#
+#   pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 \
+#       --index-url https://download.pytorch.org/whl/cu130
+#   pip install -r requirements.txt
+#
+# torch is listed unpinned below so pip does not replace a working CUDA build
+# with the CPU wheel from PyPI.
+
+# --- core ML ---
+torch
+torchvision
+torchaudio
+transformers==4.57.2
+sentence-transformers==5.1.2
+
+# --- chunking signals ---
+faster-whisper==1.2.1          # transcription (CTranslate2, not torch/numba)
+pyannote.audio==4.0.7          # speaker diarization (gated model, needs HF_TOKEN)
+silero-vad==6.2.1              # speech/silence boundaries
+scenedetect==0.7.1             # hard cuts
+open_clip_torch==3.3.0         # semantic frame similarity
+
+# --- analyzers ---
+ultralytics==8.4.41            # YOLO, used only as an attention gate
+easyocr==1.7.2                 # text *detection* only; a VLM does the reading
+gliner==0.2.28                 # zero-shot NER
+
+# --- media I/O ---
+opencv-python==4.13.0.92
+av==18.0.0                     # PyAV bundles ffmpeg; no system install needed
+soundfile==0.14.0
+Pillow==12.0.0
+
+# --- data ---
+numpy==2.3.5
+scipy==1.16.3
+scikit-learn==1.7.2
+qdrant-client==1.19.0          # embedded vector store
+
+# --- service ---
+fastapi==0.135.3
+uvicorn==0.44.0
+python-multipart==0.0.24       # multipart uploads
+openai==2.48.0
+python-dotenv==1.2.2

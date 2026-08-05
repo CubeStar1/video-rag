@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VideoMind</title>
+<style>
+  :root {
+    --bg:#0d1017; --panel:#151922; --panel2:#1b2029; --line:#252b37; --fg:#e8ecf3;
+    --muted:#8b94a8; --accent:#5aa2ff; --accent-dim:#16304f; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f6f8; --panel:#fff; --panel2:#f0f2f5; --line:#e0e4ea; --fg:#171a1f;
+            --muted:#5f6875; --accent:#0b64d4; --accent-dim:#e2edfd; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; gap:14px;
+           align-items:center; background:var(--panel); position:sticky; top:0; z-index:20; }
+  header h1 { margin:0; font-size:16px; letter-spacing:.4px; font-weight:600; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .tabs { display:flex; gap:4px; margin-left:auto; }
+  .tabs button { background:none; border:1px solid transparent; color:var(--muted);
+                 padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:500; }
+  .tabs button:hover { color:var(--fg); background:var(--panel2); }
+  .tabs button.on { background:var(--accent-dim); color:var(--accent); border-color:var(--accent); }
+  main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,440px); gap:16px; padding:16px; align-items:start; }
+  @media (max-width:1000px){ main{ grid-template-columns:1fr; } .sticky{ position:static !important; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+           padding:15px; margin-bottom:14px; }
+  .panel h2 { margin:0 0 12px; font-size:11px; text-transform:uppercase; letter-spacing:.8px;
+              color:var(--muted); font-weight:600; display:flex; align-items:center; gap:8px; }
+  .panel h2 .count { background:var(--panel2); color:var(--muted); border-radius:20px;
+                     padding:1px 8px; font-size:10px; letter-spacing:0; }
+  label { display:block; font-size:11px; color:var(--muted); margin:10px 0 4px;
+          text-transform:uppercase; letter-spacing:.5px; }
+  input,select,textarea,button { font:inherit; color:var(--fg); }
+  input[type=text],input[type=number],select,textarea {
+    width:100%; background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:8px 10px; }
+  input:focus,select:focus,textarea:focus { outline:none; border-color:var(--accent); }
+  textarea { resize:vertical; min-height:62px; }
+  .row { display:flex; gap:10px; } .row>* { flex:1; min-width:0; }
+  .btn { background:var(--accent); color:#fff; border:none; border-radius:7px; padding:9px 16px;
+         cursor:pointer; font-weight:500; margin-top:12px; }
+  .btn:hover:not(:disabled){ filter:brightness(1.1); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.sec { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  .chk { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
+  .chk label { display:flex; align-items:center; gap:6px; margin:0; color:var(--fg);
+               font-size:13px; text-transform:none; letter-spacing:0; cursor:pointer; }
+  .chk input { width:auto; }
+  .hide { display:none !important; }
+  .status { margin-top:10px; font-size:12px; color:var(--muted); min-height:18px; }
+  .status.err { color:var(--err); } .status.ok { color:var(--ok); }
+  video { width:100%; border-radius:8px; background:#000; display:block; }
+  .sticky { position:sticky; top:70px; }
+  .answer { background:var(--accent-dim); border-left:3px solid var(--accent); padding:12px 14px;
+            border-radius:0 8px 8px 0; white-space:pre-wrap; font-size:13.5px; }
+  .hit { border:1px solid var(--line); border-radius:8px; padding:11px; margin-bottom:9px;
+         background:var(--panel2); transition:border-color .15s; }
+  .hit.active { border-color:var(--accent); }
+  .hit-head { display:flex; align-items:center; gap:9px; margin-bottom:7px; flex-wrap:wrap; }
+  .ts { background:var(--accent); color:#fff; border:none; border-radius:5px; padding:3px 9px;
+        font:600 11px/1.5 ui-monospace,monospace; cursor:pointer; white-space:nowrap; }
+  .ts:hover { filter:brightness(1.15); }
+  .ts.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .score { font:11px ui-monospace,monospace; color:var(--muted); }
+  .tag { font:11px ui-monospace,monospace; color:var(--muted); margin-left:auto; }
+  .desc { font-size:13px; }
+  .facets { margin-top:7px; font-size:11.5px; color:var(--muted); }
+  .facets b { color:var(--fg); font-weight:500; }
+  .turns { margin-top:7px; border-top:1px solid var(--line); padding-top:7px; }
+  .turn { display:flex; gap:8px; font-size:13px; margin-bottom:3px; align-items:baseline; }
+  .spk { font:600 11px/1.5 ui-monospace,monospace; color:var(--accent); white-space:nowrap;
+         cursor:pointer; border:none; background:none; padding:0; }
+  .spk:hover { text-decoration:underline; }
+  .empty { color:var(--muted); font-size:13px; padding:6px 0; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td,th { padding:5px 6px; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; }
+  code { font:11px ui-monospace,monospace; color:var(--accent); }
+  .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line);
+          border-radius:20px; padding:2px 9px; font-size:11px; margin:2px 3px 2px 0; }
+  .pill.on { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:12.5px; }
+  .kv dt { color:var(--muted); } .kv dd { margin:0; }
+  .bar { height:6px; background:var(--panel2); border-radius:4px; overflow:hidden; }
+  .bar>i { display:block; height:100%; background:var(--accent); }
+  .progress { margin-top:10px; }
+  .progress .track { height:8px; background:var(--panel2); border-radius:5px;
+                     overflow:hidden; border:1px solid var(--line); }
+  .progress .track>i { display:block; height:100%; width:0; background:var(--accent);
+                       transition:width .35s ease; }
+  .progress.done .track>i { background:var(--ok); }
+  .progress.err  .track>i { background:var(--err); }
+  .progress .meta { display:flex; justify-content:space-between; gap:8px;
+                    margin-top:5px; font-size:11.5px; color:var(--muted); }
+  .progress .meta .step { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .progress .meta .pct { font:600 11.5px ui-monospace,monospace; flex:none; }
+  /* Indeterminate until the first stage arrives, so the bar never looks stalled. */
+  .progress.pending .track>i { width:35% !important; animation:slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0%{margin-left:-35%} 100%{margin-left:100%} }
+  .chip { display:inline-block; padding:1px 7px; border-radius:5px; font-size:11px;
+          font-weight:600; }
+  .chip.positive{ background:#12341c; color:#4ade80; } .chip.negative{ background:#3a1414; color:#f87171; }
+  .chip.neutral { background:var(--panel2); color:var(--muted); }
+  @media (prefers-color-scheme: light){
+    .chip.positive{ background:#dcfce7; color:#15803d; } .chip.negative{ background:#fee2e2; color:#b91c1c; }
+  }
+  .card { border:1px solid var(--line); border-radius:8px; padding:11px; margin-bottom:9px; background:var(--panel2); }
+  .card h3 { margin:0 0 5px; font-size:13px; font-weight:600; }
+  .spark { width:100%; height:52px; display:block; }
+  .chapter { display:flex; gap:10px; align-items:flex-start; padding:8px 0;
+             border-bottom:1px solid var(--line); }
+  .chapter:last-child { border-bottom:none; }
+  .muted { color:var(--muted); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:640px){ .grid2{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>VideoMind</h1><span class="sub">video RAG</span>
+  <div class="tabs">
+    <button id="tabQuery"    class="on" onclick="showTab('query')">Search</button>
+    <button id="tabInsights"           onclick="showTab('insights')">Insights</button>
+    <button id="tabDetails"            onclick="showTab('details')">Details</button>
+    <button id="tabUpload"             onclick="showTab('upload')">Upload</button>
+  </div>
+</header>
+
+<main>
+<div>
+  <!-- ============ SEARCH ============ -->
+  <section id="paneQuery">
+    <div class="panel">
+      <h2>Search
+        <span style="margin-left:auto;display:flex;gap:4px;text-transform:none;letter-spacing:0">
+          <button class="btn sec" id="modeSearch" style="margin:0;padding:4px 12px;font-size:12px"
+                  onclick="setMode('search')">Search</button>
+          <button class="btn sec" id="modeAsk" style="margin:0;padding:4px 12px;font-size:12px"
+                  onclick="setMode('ask')">Ask</button>
+        </span>
+      </h2>
+      <p id="askHint" class="muted hide" style="font-size:12px;margin:0 0 8px">
+        Answers from the video's summaries, entities, events and statistics — not just matching segments.
+        Try "what did the woman in the light gray shirt do" or "which parts are unusual".</p>
+      <label>Video</label>
+      <select id="qVideo"><option value="">All videos</option></select>
+      <div class="row">
+        <div><label>Analyzer</label><select id="qAnalyzer"></select></div>
+        <div><label>Field</label><select id="qField"></select></div>
+      </div>
+      <div class="row">
+        <div><label>Results</label><input type="number" id="qLimit" value="5" min="1" max="50"></div>
+        <div><label>Min score</label><input type="number" id="qThreshold" step="0.01" placeholder="none"></div>
+      </div>
+      <label>Filters <span class="muted" style="text-transform:none">— optional JSON</span></label>
+      <input type="text" id="qFilters" placeholder='{"min_people": 8, "after": 60}'>
+      <label>Query</label>
+      <textarea id="qText" placeholder="e.g. a man in yellow shorts walking toward the registers"></textarea>
+      <div class="chk" id="qSynthWrap"><label><input type="checkbox" id="qSynth" checked> Synthesise an answer</label></div>
+      <button class="btn" id="qBtn" onclick="runQuery()">Search</button>
+      <div id="qStatus" class="status"></div>
+    </div>
+    <div id="answerBox" class="panel hide"><h2>Answer</h2><div class="answer" id="answer"></div></div>
+    <div class="panel">
+      <h2>Matching segments <span class="count" id="hitCount">0</span></h2>
+      <div id="hits"><div class="empty">No results yet.</div></div>
+    </div>
+  </section>
+
+  <!-- ============ INSIGHTS ============ -->
+  <section id="paneInsights" class="hide">
+    <div class="panel">
+      <h2>Insights</h2>
+      <div class="row">
+        <div style="flex:2"><label>Video</label><select id="iVideo" onchange="loadInsights()"></select></div>
+        <div><label>&nbsp;</label><button class="btn sec" style="margin-top:0;width:100%"
+             onclick="rerunAggregates()">Re-run</button></div>
+      </div>
+      <div id="iProgress" class="progress hide">
+        <div class="track"><i></i></div>
+        <div class="meta"><span class="step"></span><span class="pct"></span></div>
+      </div>
+      <div id="iStatus" class="status"></div>
+    </div>
+    <div id="insights"><div class="panel"><div class="empty">Pick a video.</div></div></div>
+  </section>
+
+  <!-- ============ DETAILS ============ -->
+  <section id="paneDetails" class="hide">
+    <div class="panel">
+      <h2>Chunk details</h2>
+      <div class="row">
+        <div style="flex:2"><label>Video</label><select id="dVideo" onchange="loadDetails()"></select></div>
+        <div><label>Analyzer</label><select id="dAnalyzer" onchange="loadDetails()">
+          <option value="">All</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>From (s)</label><input type="number" id="dAfter" placeholder="start" oninput="debounceDetails()"></div>
+        <div><label>To (s)</label><input type="number" id="dBefore" placeholder="end" oninput="debounceDetails()"></div>
+        <div><label>Per page</label><input type="number" id="dLimit" value="10" min="1" max="100" oninput="debounceDetails()"></div>
+      </div>
+      <div class="chk"><label><input type="checkbox" id="dVerbose" onchange="loadDetails()"> Show internals (_frames, box coordinates)</label></div>
+      <div id="dStatus" class="status"></div>
+    </div>
+    <div id="details"><div class="panel"><div class="empty">Pick a video.</div></div></div>
+  </section>
+
+  <!-- ============ UPLOAD ============ -->
+  <section id="paneUpload" class="hide">
+    <div class="panel">
+      <h2>Upload &amp; ingest</h2>
+      <label>Video file</label><input type="file" id="uFile" accept="video/*">
+      <label>Analyzers</label><div class="chk" id="uAnalyzers"></div>
+      <label>Chunking</label>
+      <select id="uMode" onchange="syncMode()">
+        <option value="preset">Preset</option>
+        <option value="weights">Custom weights</option>
+        <option value="interval">Fixed interval</option>
+      </select>
+      <div id="modePreset">
+        <label>Preset</label>
+        <select id="uPreset"><option>audio_video</option><option>audio</option><option>video</option></select>
+      </div>
+      <div id="modeWeights" class="hide">
+        <div class="row">
+          <div><label>speaker</label><input type="number" id="wSpeaker" value="0.25" step="0.05"></div>
+          <div><label>silence</label><input type="number" id="wSilence" value="0.25" step="0.05"></div>
+        </div>
+        <div class="row">
+          <div><label>cut</label><input type="number" id="wCut" value="0.25" step="0.05"></div>
+          <div><label>semantic</label><input type="number" id="wSemantic" value="0.25" step="0.05"></div>
+        </div>
+      </div>
+      <div id="modeInterval" class="hide">
+        <label>Seconds per chunk</label><input type="number" id="uInterval" value="10" min="1">
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Min/max are not applied in this mode.</p>
+      </div>
+      <div id="minmax" class="row">
+        <div><label>Min duration (s)</label><input type="number" id="uMin" value="5" min="1"></div>
+        <div><label>Max duration (s)</label><input type="number" id="uMax" value="20" min="1"></div>
+      </div>
+      <button class="btn" id="uBtn" onclick="doUpload()">Upload &amp; ingest</button>
+      <div id="uProgress" class="progress hide">
+        <div class="track"><i></i></div>
+        <div class="meta"><span class="step"></span><span class="pct"></span></div>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+    <div class="panel"><h2>Ingested videos</h2><div id="videoList"><div class="empty">None yet.</div></div></div>
+  </section>
+</div>
+
+<!-- ============ PLAYER ============ -->
+<div>
+  <div class="panel sticky">
+    <h2>Player</h2>
+    <video id="player" controls preload="metadata"></video>
+    <div id="nowPlaying" class="empty">Click any timestamp to jump.</div>
+  </div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+let VIDEOS = [], EXCLUSIVE = [], currentVideo = null, lastHits = [], AGG = {}, AGG_COUNT = 8;
+
+async function boot(){
+  const [meta, schema] = await Promise.all([
+    (await fetch('/analyzers')).json(),
+    (await fetch('/schema')).json().catch(()=>null),
+  ]);
+  EXCLUSIVE = meta.exclusive_groups || [];
+  // Upper bound for the progress bar: some of these skip when their analyzer
+  // is absent, which is why the bar holds at 95% until the job says done.
+  if (schema?.aggregators) AGG_COUNT = Object.keys(schema.aggregators).length;
+  $('qAnalyzer').innerHTML = meta.analyzers.map(a=>`<option>${a}</option>`).join('');
+  $('qField').innerHTML    = meta.fields.map(f=>`<option>${f}</option>`).join('');
+  $('uAnalyzers').innerHTML = meta.analyzers.map((a,i)=>
+    `<label><input type="checkbox" value="${a}" ${i===0?'checked':''} onchange="enforceExclusive(this)"> ${a}</label>`).join('');
+  await loadVideos();
+  setMode('search');
+}
+
+// Mutually exclusive analyzers behave like radios, so a doomed request is never sent.
+function enforceExclusive(box){
+  if(!box.checked) return;
+  const group = EXCLUSIVE.find(g=>g.includes(box.value));
+  if(!group) return;
+  $('uAnalyzers').querySelectorAll('input').forEach(o=>{
+    if(o!==box && group.includes(o.value)) o.checked=false; });
+}
+
+async function loadVideos(){
+  VIDEOS = (await (await fetch('/videos')).json()).videos;
+  const opts = VIDEOS.map(v=>`<option value="${v.video_id}">${esc(v.video.split(/[\\/]/).pop())} — ${v.chunks} chunks</option>`).join('');
+  $('qVideo').innerHTML = '<option value="">All videos</option>' + opts;
+  $('iVideo').innerHTML = opts || '<option value="">No videos yet</option>';
+  $('dVideo').innerHTML = opts || '<option value="">No videos yet</option>';
+  $('videoList').innerHTML = VIDEOS.length
+    ? `<table><tr><th>id</th><th>file</th><th>chunks</th><th>analyzers</th></tr>${VIDEOS.map(v=>
+        `<tr><td><code>${v.video_id.slice(0,10)}</code></td><td>${esc(v.video.split(/[\\/]/).pop())}</td>
+         <td>${v.chunks}</td><td class="muted">${(v.analyzers||[]).join(', ')}</td></tr>`).join('')}</table>`
+    : '<div class="empty">None yet.</div>';
+}
+
+function showTab(t){
+  for(const [name,pane,tab] of [['query','paneQuery','tabQuery'],['insights','paneInsights','tabInsights'],
+                               ['details','paneDetails','tabDetails'],['upload','paneUpload','tabUpload']]){
+    $(pane).classList.toggle('hide', t!==name);
+    $(tab).classList.toggle('on', t===name);
+  }
+  if(t==='insights' && !Object.keys(AGG).length) loadInsights();
+  if(t==='details'  && !$('details').dataset.loaded) loadDetails();
+}
+
+function syncMode(){
+  const m=$('uMode').value;
+  $('modePreset').classList.toggle('hide', m!=='preset');
+  $('modeWeights').classList.toggle('hide', m!=='weights');
+  $('modeInterval').classList.toggle('hide', m!=='interval');
+  $('minmax').classList.toggle('hide', m==='interval');
+}
+
+/* ---------------- player ---------------- */
+function seekTo(videoId, seconds){
+  const p=$('player');
+  if(currentVideo!==videoId){
+    currentVideo=videoId; p.src=`/media/${videoId}`;
+    // Seeking before metadata loads is silently discarded.
+    p.addEventListener('loadedmetadata',()=>{p.currentTime=seconds;p.play();},{once:true});
+  } else { p.currentTime=seconds; p.play(); }
+  p.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function jump(i){
+  const h=lastHits[i]; seekTo(h.video_id,h.start);
+  $('nowPlaying').textContent=`${fmt(h.start)} – ${fmt(h.end)} · chunk ${h.chunk_id}`;
+  document.querySelectorAll('.hit').forEach(x=>x.classList.remove('active'));
+  $(`hit${i}`)?.classList.add('active');
+}
+
+/* ---------------- search / ask ---------------- */
+let mode='search';
+function setMode(m){
+  mode=m;
+  $('modeSearch').classList.toggle('on', m==='search');
+  $('modeAsk').classList.toggle('on', m==='ask');
+  // Ask routes to aggregates and always writes an answer, so the retrieval-only
+  // controls would be misleading.
+  for(const id of ['qField','qThreshold','qFilters','qSynthWrap'])
+    $(id).closest('div').classList.toggle('hide', m==='ask' && id!=='qFilters');
+  $('qFilters').closest('div').classList.toggle('hide', m==='ask');
+  $('askHint').classList.toggle('hide', m!=='ask');
+  $('qBtn').textContent = m==='ask' ? 'Ask' : 'Search';
+  $('qText').placeholder = m==='ask'
+    ? 'e.g. what did the woman in the light gray shirt do?'
+    : 'e.g. a man in yellow shorts walking toward the registers';
+}
+
+async function runQuery(){
+  if(mode==='ask') return runAsk();
+  const text=$('qText').value.trim();
+  if(!text) return setStatus('qStatus','Enter a query.','err');
+  let filters={};
+  const raw=$('qFilters').value.trim();
+  if(raw){ try{ filters=JSON.parse(raw); }catch(e){ return setStatus('qStatus','Filters must be valid JSON.','err'); } }
+  const thr=$('qThreshold').value, vid=$('qVideo').value;
+  $('qBtn').disabled=true; setStatus('qStatus','Searching…');
+  try{
+    const res=await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text, video_ids: vid?[vid]:null, analyzer:$('qAnalyzer').value,
+        field:$('qField').value, limit:+$('qLimit').value, synthesize:$('qSynth').checked,
+        score_threshold: thr===''?null:+thr, filters})});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail||'query failed');
+    renderHits(data); setStatus('qStatus',`${data.results.length} segment(s).`,'ok');
+  }catch(e){ setStatus('qStatus',e.message,'err'); }
+  $('qBtn').disabled=false;
+}
+
+async function runAsk(){
+  const question=$('qText').value.trim();
+  if(!question) return setStatus('qStatus','Enter a question.','err');
+  const vid=$('qVideo').value;
+  $('qBtn').disabled=true; setStatus('qStatus','Thinking…');
+  try{
+    const res=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question, video_ids: vid?[vid]:null, limit:+$('qLimit').value})});
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.detail||'ask failed');
+    $('answerBox').classList.remove('hide');
+    const routed=Object.values(d.sources||{}).flatMap(s=>s.routed_to||[]);
+    $('answer').innerHTML = `${esc(d.answer||d.error||'No answer.')}
+      ${routed.length?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">
+        <span class="muted" style="font-size:11px">ANSWERED USING</span><br>
+        ${[...new Set(routed)].map(r=>`<span class="pill on">${esc(r)}</span>`).join('')}</div>`:''}`;
+    renderHits({results:d.results||[], answer:null});
+    setStatus('qStatus',`${(d.results||[]).length} supporting segment(s).`,'ok');
+  }catch(e){ setStatus('qStatus',e.message,'err'); }
+  $('qBtn').disabled=false;
+}
+
+function renderHits(data){
+  lastHits=data.results; $('hitCount').textContent=data.results.length;
+  // Ask writes its own answer block before calling this, so only Search
+  // toggles it here.
+  if(data.answer!==null){
+    $('answerBox').classList.toggle('hide',!data.answer);
+    if(data.answer) $('answer').textContent=data.answer;
+  }
+  if(!data.results.length){ $('hits').innerHTML='<div class="empty">Nothing above the score threshold.</div>'; return; }
+  $('hits').innerHTML=data.results.map((r,i)=>`
+    <div class="hit" id="hit${i}">
+      <div class="hit-head">
+        <button class="ts" onclick="jump(${i})">${fmt(r.start)} – ${fmt(r.end)}</button>
+        <span class="score">${(r.score??0).toFixed(3)}</span>
+        <span class="tag">${r.video_id.slice(0,8)} · chunk ${r.chunk_id}</span>
+      </div>
+      ${(r.turns&&r.turns.length)?'':`<div class="desc">${esc((r.description||r.text||'').slice(0,400))}</div>`}
+      ${renderTurns(r)}${renderFacets(r)}
+    </div>`).join('');
+}
+const renderTurns = r => (r.turns&&r.turns.length)
+  ? `<div class="turns">${r.turns.map(t=>`<div class="turn">
+       <button class="spk" onclick="seekTo('${r.video_id}',${t.start})">${esc(t.speaker)}</button>
+       <span>${esc(t.text)}</span></div>`).join('')}</div>` : '';
+const renderFacets = r => {
+  const bits=['speakers','people','objects','actions','tags'].filter(k=>(r[k]||[]).length)
+    .map(k=>`<b>${k}:</b> ${esc((r[k]||[]).slice(0,5).join(', '))}`);
+  if(r.people_count!=null) bits.unshift(`<b>people:</b> ${r.people_count}`);
+  return bits.length?`<div class="facets">${bits.join(' &nbsp;·&nbsp; ')}</div>`:'';
+};
+
+/* ---------------- insights ---------------- */
+async function loadInsights(){
+  const vid=$('iVideo').value;
+  if(!vid){ $('insights').innerHTML='<div class="panel"><div class="empty">No videos ingested.</div></div>'; return; }
+  setStatus('iStatus','Loading…');
+  try{
+    const d=await (await fetch(`/videos/${vid}/aggregates`)).json();
+    AGG=d.aggregates||{};
+    renderInsights(vid, AGG, d.available||[]);
+    setStatus('iStatus',`${(d.available||[]).length} aggregate(s).`,'ok');
+  }catch(e){ setStatus('iStatus',e.message,'err'); }
+}
+
+async function rerunAggregates(){
+  const vid=$('iVideo').value; if(!vid) return;
+  setStatus('iStatus','Re-running…');
+  const tracker=newTracker('iProgress', AGG_COUNT);
+  const res=await fetch(`/videos/${vid}/aggregates`,{method:'POST'});
+  const {job_id}=await res.json();
+  const poll=async()=>{
+    const j=await (await fetch(`/jobs/${job_id}`)).json();
+    if(j.status==='done'){
+      const r=j.result||{};
+      const skipped=(r.skipped||[]).length;
+      trackerFinish(tracker,true,`${(r.ran||[]).length} aggregates${skipped?` · ${skipped} skipped`:''}`);
+      setStatus('iStatus','Done.','ok'); loadInsights(); return;
+    }
+    if(j.status==='failed'){
+      trackerFinish(tracker,false,j.error||'failed');
+      setStatus('iStatus',j.error||'failed','err'); return;
+    }
+    trackerUpdate(tracker, j);
+    setTimeout(poll,700);
+  };
+  poll();
+}
+
+function renderInsights(vid,a,available){
+  const out=[];
+  if(a.summary)        out.push(panelSummary(a.summary));
+  if(a.chapters)       out.push(panelChapters(vid,a.chapters));
+  if(a.stats)          out.push(panelStats(vid,a.stats));
+  if(a.novelty)        out.push(panelNovelty(vid,a.novelty));
+  if(a.entities)       out.push(panelEntities(vid,a.entities,a.entity_timelines));
+  if(a.object_entities)out.push(panelObjects(vid,a.object_entities));
+  if(a.events)         out.push(panelEvents(vid,a.events));
+  if(a.speaker_stats)  out.push(panelSpeakers(vid,a.speaker_stats));
+  if(a.sentiment)      out.push(panelSentiment(vid,a.sentiment));
+  if(a.ner)            out.push(panelNER(a.ner));
+  if(a.cooccurrence)   out.push(panelCooccurrence(a.cooccurrence));
+  $('insights').innerHTML = out.length ? out.join('')
+    : `<div class="panel"><div class="empty">No aggregates yet — press Re-run.</div></div>`;
+}
+
+const panel=(title,count,body)=>`<div class="panel"><h2>${title}${count!=null?`<span class="count">${count}</span>`:''}</h2>${body}</div>`;
+
+const panelSummary = s => panel('Summary',null,`
+  <div class="desc" style="margin-bottom:10px">${esc(s.summary)}</div>
+  ${s.key_points?.length?`<ul style="margin:0 0 10px;padding-left:18px;font-size:13px">${s.key_points.map(k=>`<li>${esc(k)}</li>`).join('')}</ul>`:''}
+  ${s.topics?.length?`<div>${s.topics.map(t=>`<span class="pill">${esc(t)}</span>`).join('')}</div>`:''}`);
+
+const panelChapters = (vid,c) => panel('Chapters',c.chapters.length, c.chapters.map(ch=>`
+  <div class="chapter">
+    <button class="ts" onclick="seekTo('${vid}',${ch.start})">${fmt(ch.start)}</button>
+    <div><div style="font-weight:600;font-size:13px">${esc(ch.title)}</div>
+         <div class="muted" style="font-size:12.5px">${esc(ch.summary)}</div></div>
+  </div>`).join(''));
+
+function panelStats(vid,s){
+  let body=`<dl class="kv">
+    <dt>Duration</dt><dd>${fmt(s.duration)}</dd>
+    <dt>Chunks</dt><dd>${s.chunks}</dd>`;
+  if(s.speech) body+=`<dt>Speech</dt><dd>${s.speech.words} words · ${s.speech.spoken_seconds}s${s.speech.speech_ratio!=null?` · ${(s.speech.speech_ratio*100).toFixed(0)}% of runtime`:''}</dd>`;
+  if(s.objects) body+=`<dt>Objects</dt><dd>${s.objects.distinct} distinct</dd>`;
+  body+='</dl>';
+  if(s.people){
+    const pts=s.people.series, max=s.people.max||1, W=100, H=40;
+    const bars=pts.map((p,i)=>{
+      const h=(p.people_count/max)*H, w=W/pts.length;
+      return `<rect x="${(i*w).toFixed(2)}" y="${(H-h).toFixed(2)}" width="${(w*0.82).toFixed(2)}" height="${h.toFixed(2)}"
+               fill="var(--accent)" opacity="0.85"><title>${fmt(p.start)} — ${p.people_count} people</title></rect>`;
+    }).join('');
+    body+=`<div style="margin-top:12px"><div class="muted" style="font-size:11px;margin-bottom:4px">PEOPLE OVER TIME (max ${s.people.max})</div>
+      <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars}</svg>
+      <div class="grid2" style="margin-top:8px">
+        <div class="card" style="margin:0"><div class="muted" style="font-size:11px">BUSIEST</div>
+          <button class="ts ghost" onclick="seekTo('${vid}',${s.people.busiest.start})">${fmt(s.people.busiest.start)}</button>
+          <span style="font-weight:600"> ${s.people.busiest.count} people</span></div>
+        <div class="card" style="margin:0"><div class="muted" style="font-size:11px">QUIETEST</div>
+          <button class="ts ghost" onclick="seekTo('${vid}',${s.people.quietest.start})">${fmt(s.people.quietest.start)}</button>
+          <span style="font-weight:600"> ${s.people.quietest.count} people</span></div>
+      </div></div>`;
+  }
+  if(s.objects?.most_common) body+=`<div style="margin-top:10px">${s.objects.most_common.slice(0,12).map(([n,c])=>`<span class="pill">${esc(n)} <b>${c}</b></span>`).join('')}</div>`;
+  return panel('Statistics',null,body);
+}
+
+const panelNovelty = (vid,n) => panel('Unusual segments', n.outliers.length||null, `
+  <div class="muted" style="font-size:12px;margin-bottom:8px">Ranked by distance from the rest of the video (${esc(n.basis)}).</div>
+  ${n.ranked.slice(0,6).map(r=>`
+    <div class="hit" style="margin-bottom:6px">
+      <div class="hit-head">
+        <button class="ts" onclick="seekTo('${vid}',${r.start})">${fmt(r.start)} – ${fmt(r.end)}</button>
+        <span class="score">${r.novelty.toFixed(4)}</span>
+        ${n.outliers.some(o=>o.chunk_id===r.chunk_id)?'<span class="chip negative">outlier</span>':''}
+        <span class="tag">chunk ${r.chunk_id}</span>
+      </div><div class="desc">${esc(r.description.slice(0,160))}</div>
+    </div>`).join('')}`);
+
+function panelEntities(vid,e,timelines){
+  const tl = {}; (timelines?.timelines||[]).forEach(t=>tl[t.entity_id]=t);
+  const linked = e.entities.filter(x=>x.appearances>1);
+  return panel('People', `${e.linked} linked / ${e.total}`, `
+    <div class="muted" style="font-size:12px;margin-bottom:8px">
+      ${e.observations} sightings resolved into ${e.total} individuals; ${e.unlinked} seen only once.</div>
+    ${linked.slice(0,10).map(x=>{
+      const t=tl[x.entity_id];
+      return `<div class="card">
+        <h3>${esc(x.description || x.signature.slice(0,70))}</h3>
+        <div class="muted" style="font-size:11.5px;margin-bottom:6px">
+          ${esc(x.role||x.roles?.[0]||'')} · seen ${x.appearances}× ·
+          ${t?`present ${t.observed_seconds}s of ${fmt(t.span_seconds)} span`:''}</div>
+        ${x.narrative?`<div class="desc" style="font-size:12.5px;margin-bottom:6px">${esc(x.narrative)}</div>`:''}
+        <div>${x.observations.map(o=>`<button class="ts ghost" onclick="seekTo('${vid}',${o.start})">${fmt(o.start)}</button>`).join(' ')}</div>
+      </div>`;}).join('') || '<div class="empty">Nobody appeared in more than one chunk.</div>'}`);
+}
+
+function panelObjects(vid,o){
+  const tracked=o.objects.filter(x=>x.appearances>1);
+  return panel('Objects', `${o.linked} tracked / ${o.total}`, `
+    <div class="muted" style="font-size:12px;margin-bottom:8px">
+      ${o.observations} sightings resolved into ${o.total} objects; ${o.unlinked} seen once.
+      ${o.people_sightings?`${o.people_sightings} person sightings handed to People.`:''}</div>
+    ${tracked.slice(0,8).map(x=>`<div class="card">
+        <h3>${esc(x.name)}</h3>
+        <div class="muted" style="font-size:11.5px;margin-bottom:6px">
+          ${esc(x.role||'')} · seen ${x.appearances}× · ${fmt(x.first_seen)}–${fmt(x.last_seen)}</div>
+        <div class="desc" style="font-size:12.5px;margin-bottom:6px">
+          ${esc(x.narrative || x.description || x.signature)}</div>
+        <div>${x.observations.slice(0,10).map(ob=>
+          `<button class="ts ghost" onclick="seekTo('${vid}',${ob.start})">${fmt(ob.start)}</button>`).join(' ')}</div>
+      </div>`).join('') || '<div class="empty">No object appeared in more than one chunk.</div>'}
+    ${o.fixtures?.length?`<div class="facets" style="margin-top:8px"><b>fixtures (counted, not tracked):</b>
+      ${o.fixtures.slice(0,8).map(f=>`<span class="pill">${esc(f[0])} ${f[1]}</span>`).join('')}</div>`:''}`);
+}
+
+const panelEvents = (vid,e) => panel('Events', e.events.length, `
+  <div style="margin-bottom:8px">${Object.entries(e.categories).map(([k,v])=>`<span class="pill">${esc(k)} <b>${v}</b></span>`).join('')}</div>
+  ${e.events.map(x=>`<div class="chapter">
+      <button class="ts" onclick="seekTo('${vid}',${x.start})">${fmt(x.start)}</button>
+      <div><div style="font-size:13px">${esc(x.event)}</div>
+      ${x.actor?`<div class="muted" style="font-size:11.5px">${esc(x.actor)}</div>`:''}</div>
+    </div>`).join('')}`);
+
+const panelSpeakers = (vid,s) => panel('Speakers', s.speaker_count, `
+  <dl class="kv"><dt>Turns</dt><dd>${s.total_turns}</dd>
+    <dt>Handovers</dt><dd>${s.handovers}</dd>
+    <dt>Total speech</dt><dd>${s.total_speech_seconds}s</dd></dl>
+  <div style="margin-top:10px">${s.speakers.map(sp=>`
+    <div style="margin-bottom:9px">
+      <div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px">
+        <b>${esc(sp.speaker)}</b><span class="muted">${sp.seconds}s · ${sp.turns} turns · ${sp.words} words</span>
+        <span style="margin-left:auto" class="muted">${(sp.share*100).toFixed(0)}%</span></div>
+      <div class="bar"><i style="width:${(sp.share*100).toFixed(1)}%"></i></div>
+      <div style="margin-top:3px">${sp.chunks.slice(0,8).map(c=>`<span class="pill">chunk ${c}</span>`).join('')}</div>
+    </div>`).join('')}</div>`);
+
+const panelSentiment = (vid,s) => panel('Sentiment', null, `
+  <div style="margin-bottom:8px">${Object.entries(s.overall).map(([k,v])=>`<span class="chip ${k}">${k} ${v}</span>`).join(' ')}</div>
+  ${s.per_speaker.length?`<table><tr><th>speaker</th><th>pos</th><th>neu</th><th>neg</th><th>dominant</th></tr>
+    ${s.per_speaker.map(p=>`<tr><td><b>${esc(p.speaker)}</b></td><td>${p.positive}</td><td>${p.neutral}</td>
+      <td>${p.negative}</td><td><span class="chip ${p.dominant}">${p.dominant}</span></td></tr>`).join('')}</table>`:''}
+  <div style="margin-top:10px">${s.timeline.slice(0,8).map(t=>`
+    <div class="turn"><button class="ts ghost" onclick="seekTo('${vid}',${t.start})">${fmt(t.start)}</button>
+      <span class="chip ${t.label}">${t.label}</span>
+      <span style="font-size:12.5px">${esc(t.text.slice(0,90))}</span></div>`).join('')}</div>
+  <div class="muted" style="font-size:11px;margin-top:8px">${esc(s.note)}</div>`);
+
+const panelNER = n => panel('Entities mentioned', n.entities.length, `
+  ${Object.entries(n.by_label).map(([label,items])=>`
+    <div style="margin-bottom:7px"><div class="muted" style="font-size:11px;text-transform:uppercase">${esc(label)}</div>
+      <div>${items.slice(0,12).map(i=>`<span class="pill">${esc(i)}</span>`).join('')}</div></div>`).join('')}`);
+
+const panelCooccurrence = c => panel('Seen together', c.pair_count, c.pairs.length
+  ? `<table><tr><th>person</th><th>with</th><th>chunks</th></tr>${c.pairs.slice(0,10).map(p=>`
+      <tr><td>${esc(p.a_description.slice(0,34))}</td><td>${esc(p.b_description.slice(0,34))}</td>
+      <td>${p.count}</td></tr>`).join('')}</table>`
+  : '<div class="empty">No overlapping appearances.</div>');
+
+/* ---------------- details ---------------- */
+let detailsTimer=null, detailsOffset=0;
+function debounceDetails(){ clearTimeout(detailsTimer); detailsTimer=setTimeout(()=>{detailsOffset=0;loadDetails();},400); }
+
+async function loadDetails(offset){
+  const vid=$('dVideo').value;
+  if(!vid){ $('details').innerHTML='<div class="panel"><div class="empty">No videos ingested.</div></div>'; return; }
+  detailsOffset = offset ?? 0;
+  const p=new URLSearchParams({limit:$('dLimit').value||10, offset:detailsOffset});
+  if($('dAnalyzer').value) p.set('analyzer',$('dAnalyzer').value);
+  if($('dAfter').value)    p.set('after',$('dAfter').value);
+  if($('dBefore').value)   p.set('before',$('dBefore').value);
+  if($('dVerbose').checked)p.set('verbose','true');
+  setStatus('dStatus','Loading…');
+  try{
+    const res=await fetch(`/videos/${vid}/chunks?${p}`);
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.detail||'failed');
+    // Analyzer filter is populated from the video itself, so it only ever
+    // offers analyzers this video actually has output for.
+    const sel=$('dAnalyzer'), keep=sel.value;
+    sel.innerHTML='<option value="">All analyzers</option>'+d.analyzers.map(a=>`<option ${a===keep?'selected':''}>${a}</option>`).join('');
+    renderDetails(vid,d);
+    $('details').dataset.loaded='1';
+    setStatus('dStatus',`${d.total} chunk(s) · showing ${d.chunks.length} from ${d.offset}`,'ok');
+  }catch(e){ setStatus('dStatus',e.message,'err'); }
+}
+
+function renderDetails(vid,d){
+  if(!d.chunks.length){ $('details').innerHTML='<div class="panel"><div class="empty">No chunks match.</div></div>'; return; }
+  const pages=`<div class="panel" style="display:flex;gap:8px;align-items:center">
+      <button class="btn sec" style="margin:0" ${d.offset<=0?'disabled':''}
+        onclick="loadDetails(${Math.max(0,d.offset-d.limit)})">Previous</button>
+      <span class="muted" style="font-size:12px">${d.offset+1}–${Math.min(d.offset+d.limit,d.total)} of ${d.total}</span>
+      <button class="btn sec" style="margin:0;margin-left:auto" ${d.offset+d.limit>=d.total?'disabled':''}
+        onclick="loadDetails(${d.offset+d.limit})">Next</button></div>`;
+  $('details').innerHTML = d.chunks.map(c=>{
+    const analyzerKeys=Object.keys(c).filter(k=>!['chunk_id','start','end','timecode'].includes(k));
+    return `<div class="panel">
+      <h2><button class="ts" onclick="seekTo('${vid}',${c.start})">${fmt(c.start)} – ${fmt(c.end)}</button>
+        <span style="text-transform:none;letter-spacing:0">chunk ${c.chunk_id}</span>
+        <span class="count">${analyzerKeys.length} analyzer${analyzerKeys.length===1?'':'s'}</span></h2>
+      ${analyzerKeys.length ? analyzerKeys.map(k=>renderAnalyzerBlock(k,c[k])).join('')
+                            : '<div class="empty">No analyzer output for this chunk.</div>'}
+    </div>`;
+  }).join('') + pages;
+}
+
+function renderAnalyzerBlock(name,value){
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span class="pill on">${esc(name)}</span></div>
+    ${renderValue(value)}</div>`;
+}
+
+// Generic on purpose: a newly registered analyzer renders sensibly here with
+// no frontend change, rather than needing a bespoke branch per output shape.
+function renderValue(v, depth=0){
+  if(v==null||v==='') return '<span class="muted">—</span>';
+  if(typeof v==='string') return `<div class="desc">${esc(v)}</div>`;
+  if(typeof v==='number'||typeof v==='boolean') return `<b>${esc(v)}</b>`;
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="muted">none</span>';
+    // Flat list of scalars reads better as chips than as rows.
+    if(v.every(x=>typeof x!=='object'||x===null))
+      return `<div>${v.map(x=>`<span class="pill">${esc(x)}</span>`).join('')}</div>`;
+    return v.map((x,i)=>`<div style="border-left:2px solid var(--line);padding-left:9px;margin:6px 0">
+        <div class="muted" style="font-size:10.5px">#${i+1}</div>${renderValue(x,depth+1)}</div>`).join('');
+  }
+  const rows=Object.entries(v).map(([k,val])=>{
+    const scalar = val==null || typeof val!=='object';
+    return `<tr><td style="width:1%;white-space:nowrap;vertical-align:top" class="muted">${esc(k)}</td>
+      <td>${scalar?renderValue(val,depth+1):renderValue(val,depth+1)}</td></tr>`;
+  }).join('');
+  return `<table style="font-size:12.5px">${rows}</table>`;
+}
+
+/* ---------------- upload ---------------- */
+async function doUpload(){
+  const file=$('uFile').files[0];
+  if(!file) return setStatus('status','Pick a video file first.','err');
+  const chosen=[...$('uAnalyzers').querySelectorAll('input:checked')].map(c=>c.value);
+  if(!chosen.length) return setStatus('status','Pick at least one analyzer.','err');
+  const fd=new FormData(); fd.append('file',file); fd.append('analyzers',chosen.join(','));
+  const mode=$('uMode').value; fd.append('mode',mode);
+  if(mode==='preset')   fd.append('preset',$('uPreset').value);
+  if(mode==='interval') fd.append('interval',$('uInterval').value);
+  if(mode==='weights'){ fd.append('speaker',$('wSpeaker').value); fd.append('silence',$('wSilence').value);
+                        fd.append('cut',$('wCut').value); fd.append('semantic',$('wSemantic').value); }
+  fd.append('min_duration',$('uMin').value); fd.append('max_duration',$('uMax').value);
+  $('uBtn').disabled=true; setStatus('status','Uploading…');
+  // chunking + chunked, then analyse and index each analyzer, then aggregate.
+  const tracker = newTracker('uProgress', 2 + chosen.length*2 + AGG_COUNT);
+  try{
+    const res=await fetch('/videos',{method:'POST',body:fd});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail||'upload failed');
+    pollUpload(data.job_id, tracker);
+  }catch(e){
+    setStatus('status',e.message,'err'); trackerFinish(tracker,false,e.message); $('uBtn').disabled=false;
+  }
+}
+async function pollUpload(jobId, tracker){
+  const job=await (await fetch(`/jobs/${jobId}`)).json();
+  if(job.status==='done'){
+    const r=job.result;
+    const agg=r.aggregated?.ran?.length ?? 0;
+    trackerFinish(tracker,true,`${r.chunks} chunks · ${agg} aggregates`);
+    setStatus('status',`Done — ${r.chunks} chunks, indexed ${Object.entries(r.indexed).map(([k,v])=>`${v} ${k}`).join(', ')}.`,'ok');
+    $('uBtn').disabled=false; await loadVideos(); return;
+  }
+  if(job.status==='failed'){
+    trackerFinish(tracker,false,job.error||'failed');
+    setStatus('status',job.error||'failed','err'); $('uBtn').disabled=false; return;
+  }
+  trackerUpdate(tracker, job);
+  setTimeout(()=>pollUpload(jobId, tracker),1500);
+}
+
+function setStatus(id,msg,cls=''){ const el=$(id); el.textContent=msg; el.className='status '+cls; }
+
+/* ---------------- progress ---------------- */
+// The job reports a stage and which analyzer/aggregator it is on, but not how
+// many remain. Rather than invent a percentage, count the distinct steps seen
+// against how many the request should produce - monotonic, so the bar never
+// jumps backwards when a stage repeats for the next analyzer.
+function newTracker(elementId, expectedSteps){
+  const el = $(elementId);
+  el.classList.remove('hide','done','err');
+  el.classList.add('pending');
+  el.querySelector('.step').textContent = 'queued…';
+  el.querySelector('.pct').textContent = '';
+  el.querySelector('.track > i').style.width = '0%';
+  return { el, expected: Math.max(expectedSteps, 1), seen: new Set(), last: 0 };
+}
+
+function trackerUpdate(t, job){
+  const detail = job.detail || {};
+  const label = detail.analyzer || detail.aggregator || '';
+  const key = `${job.stage}:${label}`;
+  if (job.stage) { t.el.classList.remove('pending'); t.seen.add(key); }
+
+  // Held below 100 until the job actually reports done: some aggregators skip
+  // when their analyzer is absent, so the expected count is an upper bound.
+  const pct = Math.min(95, Math.round((t.seen.size / t.expected) * 100));
+  t.last = Math.max(t.last, pct);
+  t.el.querySelector('.track > i').style.width = t.last + '%';
+  t.el.querySelector('.step').textContent =
+    [job.stage, label].filter(Boolean).join(' · ') || job.status;
+  t.el.querySelector('.pct').textContent = t.last + '%';
+}
+
+function trackerFinish(t, ok, message){
+  t.el.classList.remove('pending');
+  t.el.classList.add(ok ? 'done' : 'err');
+  t.el.querySelector('.track > i').style.width = '100%';
+  t.el.querySelector('.step').textContent = message;
+  t.el.querySelector('.pct').textContent = ok ? '100%' : '';
+}
+
+boot();
+</script>
+</body>
+</html>
