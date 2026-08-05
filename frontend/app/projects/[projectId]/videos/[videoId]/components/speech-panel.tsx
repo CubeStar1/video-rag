@@ -210,6 +210,7 @@ function SentimentSection({
   return (
     <Section
       title="Sentiment"
+      defaultOpen={false}
       icon={<SmilePlus className="size-4" />}
       subtitle={str(sentiment.model)}
     >

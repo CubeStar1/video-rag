@@ -37,7 +37,7 @@ export function RawPanel({ details }: { details: VideoDetails }) {
 
   return (
     <div className="space-y-4">
-      <Section title="Record" icon={<Database className="size-4" />}>
+      <Section title="Record" icon={<Database className="size-4" />} defaultOpen>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Title">{video.title}</Field>
           <Field label="Status">
@@ -101,6 +101,7 @@ export function RawPanel({ details }: { details: VideoDetails }) {
 
       <Section
         title="Aggregates"
+        defaultOpen={false}
         icon={<Braces className="size-4" />}
         count={ids.length}
         subtitle={missing.length ? `not stored: ${missing.join(', ')}` : undefined}

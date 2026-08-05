@@ -5,7 +5,14 @@ import { ChevronRight, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatTimestamp } from '@/lib/core/format'
 
-/** A titled block. Every panel on this page is made of these, so they line up. */
+/**
+ * A titled block, collapsed and expanded by its header.
+ *
+ * Every panel on this page is made of these. They collapse because a fully
+ * analysed video produces more sections than fit on a screen — a summary, four
+ * statistics blocks, chapters, events, novelty, named entities — and scrolling
+ * past ones you are not reading is the thing that makes the page feel long.
+ */
 export function Section({
   title,
   subtitle,
@@ -14,6 +21,8 @@ export function Section({
   actions,
   children,
   className,
+  collapsible = true,
+  defaultOpen = true,
 }: {
   title: string
   subtitle?: string
@@ -22,25 +31,57 @@ export function Section({
   actions?: React.ReactNode
   children: React.ReactNode
   className?: string
+  collapsible?: boolean
+  defaultOpen?: boolean
 }) {
-  return (
-    <section className={cn('rounded-xl border bg-card', className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          {icon && <span className="text-muted-foreground">{icon}</span>}
-          {title}
-          {count !== undefined && (
-            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-normal tabular-nums text-muted-foreground">
-              {count}
-            </span>
+  const [open, setOpen] = useState(defaultOpen)
+  const isOpen = collapsible ? open : true
+
+  const heading = (
+    <>
+      {collapsible && (
+        <ChevronRight
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform',
+            isOpen && 'rotate-90'
           )}
-        </h3>
-        {subtitle && !actions && (
-          <span className="text-[11px] text-muted-foreground">{subtitle}</span>
+        />
+      )}
+      {icon && <span className="text-muted-foreground">{icon}</span>}
+      {title}
+      {count !== undefined && (
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-normal tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      )}
+      {subtitle && (
+        <span className="truncate text-[11px] font-normal text-muted-foreground">{subtitle}</span>
+      )}
+    </>
+  )
+
+  return (
+    <section className={cn('overflow-hidden rounded-xl border bg-card', className)}>
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-between gap-2 px-4 py-2.5',
+          isOpen && 'border-b'
         )}
-        {actions}
+      >
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium"
+          >
+            {heading}
+          </button>
+        ) : (
+          <h3 className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">{heading}</h3>
+        )}
+        {isOpen && actions}
       </div>
-      <div className="p-4">{children}</div>
+      {isOpen && <div className="p-4">{children}</div>}
     </section>
   )
 }

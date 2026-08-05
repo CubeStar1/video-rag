@@ -34,7 +34,7 @@ import { describeChunking } from '@/lib/core/chunking'
 import { useVideoDetails } from '@/hooks/use-video-details'
 import { useVideoMutations } from '@/hooks/use-project-videos'
 import { VideoPlayer, type VideoPlayerHandle } from '@/app/agent/components/video-player'
-import type { AnalyzerId, ProjectVideo } from '@/lib/core/types'
+import type { AnalyzerId, ChunkOut, ProjectVideo } from '@/lib/core/types'
 import { ChunkPanel } from './chunk-panel'
 import { OverviewPanel } from './overview-panel'
 import { EntitiesPanel } from './entities-panel'
@@ -100,8 +100,8 @@ export function VideoDetailClient({
   }, [])
 
   return (
-    <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <header className="z-30 shrink-0 border-b bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-400 flex-wrap items-center gap-3 px-4 py-2.5 lg:px-6">
           <Link
             href={`/projects/${projectId}`}
@@ -198,9 +198,16 @@ export function VideoDetailClient({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-400 gap-6 px-4 py-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:px-6">
+      {/*
+        Two independent scroll regions on a wide screen: the player and summary
+        stay put while the analysis scrolls past them, because every timestamp
+        in the right-hand column is a seek and losing sight of the frame it
+        refers to defeats the point. Below `lg` they stack and the page scrolls
+        as one.
+      */}
+      <div className="mx-auto flex w-full min-h-0 max-w-400 flex-1 flex-col overflow-y-auto lg:flex-row lg:gap-6 lg:overflow-hidden lg:px-6">
         {/* Player and the facts about the file */}
-        <aside className="lg:sticky lg:top-16 lg:self-start">
+        <aside className="shrink-0 space-y-3 px-4 pb-2 pt-4 lg:w-96 lg:overflow-y-auto lg:px-0 lg:pb-6">
           <div className="overflow-hidden rounded-xl border bg-card">
             <VideoPlayer
               ref={playerRef}
@@ -209,12 +216,15 @@ export function VideoDetailClient({
               className="w-full rounded-none"
               onTimeUpdate={handleTimeUpdate}
             />
-            <div className="border-t px-3 py-2 text-[11px] tabular-nums text-muted-foreground">
-              {formatDuration(currentTime)} / {formatDuration(duration)}
+            <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] tabular-nums text-muted-foreground">
+              <span>
+                {formatDuration(currentTime)} / {formatDuration(duration)}
+              </span>
+              <span className="truncate pl-2">{activeChunkLabel(chunks, currentTime)}</span>
             </div>
           </div>
 
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl border bg-card p-3">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl border bg-card p-3">
             <Meta label="Chunks">
               {details?.chunk_total || video.chunk_count || 0}
               {details && details.chunk_total > chunks.length && (
@@ -259,7 +269,7 @@ export function VideoDetailClient({
         </aside>
 
         {/* The analysis */}
-        <main className="min-w-0">
+        <main className="min-w-0 flex-1 px-4 pb-10 pt-4 lg:overflow-y-auto lg:px-0 lg:pb-8">
           {error && (
             <Banner tone="error">
               {(error as Error).message || 'Could not load this video’s analysis.'}
@@ -276,7 +286,7 @@ export function VideoDetailClient({
             <LoadingSkeleton />
           ) : (
             <Tabs value={tab} onValueChange={setTab}>
-              <TabsList className="mb-4 h-9 w-full justify-start overflow-x-auto">
+              <TabsList className="sticky top-0 z-20 mb-4 h-9 w-full justify-start overflow-x-auto">
                 <TabsTrigger value="overview" className="gap-1.5 text-xs">
                   <Sparkles className="size-3.5" />
                   Overview
@@ -309,6 +319,7 @@ export function VideoDetailClient({
                   chunks={chunks}
                   chunkTotal={details?.chunk_total ?? chunks.length}
                   analyzers={analyzers}
+                  duration={duration}
                   currentTime={currentTime}
                   focusChunkId={focusChunkId}
                   onSeek={seek}
@@ -343,6 +354,14 @@ export function VideoDetailClient({
       </div>
     </div>
   )
+}
+
+/** Which chunk the playhead is inside, shown under the player as a bearing. */
+function activeChunkLabel(chunks: ChunkOut[], currentTime: number): string {
+  const index = chunks.findIndex(
+    (chunk) => currentTime >= chunk.start && currentTime < chunk.end
+  )
+  return index >= 0 ? `chunk ${chunks[index].chunk_id} · ${index + 1} of ${chunks.length}` : ''
 }
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {

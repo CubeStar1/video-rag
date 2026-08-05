@@ -141,14 +141,14 @@ function SummarySection({
 
   return (
     <Section
-      title="Summary"
+      title={hideProse ? 'Summary detail' : 'Summary'}
       icon={<FileText className="size-4" />}
       subtitle={summary.based_on.length ? `from ${summary.based_on.join(', ')}` : undefined}
     >
-      <p className="text-sm leading-relaxed">{summary.summary}</p>
+      {!hideProse && <p className="text-sm leading-relaxed">{summary.summary}</p>}
 
       {summary.key_points.length > 0 && (
-        <div className="mt-4">
+        <div className={cn(!hideProse && 'mt-4')}>
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Key points
           </div>
@@ -163,7 +163,7 @@ function SummarySection({
         </div>
       )}
 
-      {summary.topics.length > 0 && (
+      {!hideProse && summary.topics.length > 0 && (
         <div className="mt-4">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Topics
@@ -475,6 +475,7 @@ function NoveltySection({
   return (
     <Section
       title="Unusual moments"
+      defaultOpen={false}
       icon={<Layers className="size-4" />}
       subtitle={`ranked against ${str(novelty.basis) || 'the video'} · mean distance ${num(
         novelty.mean_distance
@@ -532,6 +533,7 @@ function NamedEntitiesSection({ ner }: { ner: Record<string, any> }) {
   return (
     <Section
       title="Named entities"
+      defaultOpen={false}
       icon={<Tag className="size-4" />}
       count={entities.length}
       subtitle={

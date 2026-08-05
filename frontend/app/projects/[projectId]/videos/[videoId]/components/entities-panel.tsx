@@ -135,6 +135,7 @@ export function EntitiesPanel({
       {objects.length > 0 && (
         <Section
           title="Objects tracked"
+          defaultOpen={false}
           icon={<Boxes className="size-4" />}
           count={objects.length}
           subtitle={`${num(objectsRaw.linked)} linked · ${num(objectsRaw.unlinked)} seen once`}
@@ -177,7 +178,7 @@ export function EntitiesPanel({
       )}
 
       {counted(cooccurrence.objects_present).length > 0 && (
-        <Section title="Objects present" icon={<Boxes className="size-4" />}>
+        <Section title="Objects present" defaultOpen={false} icon={<Boxes className="size-4" />}>
           <ul className="space-y-1">
             {counted(cooccurrence.objects_present).map((object, index, all) => (
               <li key={object.name} className="flex items-center gap-2">
