@@ -40,20 +40,22 @@ fixed threshold of 0.95 retained one frame on a static camera, whose consecutive
 similarity median was 0.9955; a purely relative threshold selected compression noise.
 Both were measured. & NFR-2 \\
 E-7 & Questions routed to aggregates &
-A question is directed to the video-level output capable of answering it --- entities
-for a person, novelty for anomalies, statistics for activity levels --- rather than
+A question is directed to the video-level output capable of answering it (entities
+for a person, novelty for anomalies, statistics for activity levels) rather than
 searching segments and synthesising from whatever is returned. & FR-6 \\
 E-8 & Constrained entity linking &
-People are clustered on appearance under hard constraints --- two people visible in the
-same chunk cannot be the same person --- \emph{before} an LLM writes any narrative.
+People are clustered on appearance under hard constraints, chief among them that two
+people visible in the same chunk cannot be the same person, and this happens before an
+LLM writes any narrative.
 Asked to match people directly, an LLM merges anyone in dark clothing. The signature is
 clothing alone: blending in the appearance field dragged same-person scores to
 0.69--0.87, because it drifts and occasionally carries meta-commentary that the
 embedding treats as content. & FR-8 \\
 E-9 & Object linking with fixture suppression &
 Object entities reuse the same constrained clusterer with two additional filters:
-static fixtures such as counters and shelves are counted but not tracked, since ``the
-counter was present throughout'' is true of every frame and informs no search; and
+static fixtures such as counters and shelves are counted but not tracked, since the
+observation that the counter was present throughout is true of every frame and informs
+no search; and
 person-like detections are handed to the people aggregator, which has clothing with
 which to identify them. & FR-8 \\
 E-10 & Selectable response detail &

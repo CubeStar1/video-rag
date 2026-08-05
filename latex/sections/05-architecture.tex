@@ -19,8 +19,8 @@ design decisions:
 \end{itemize}
 
 Verification was performed against a running server rather than by code inspection,
-because a number of defects --- stale processes, broken answer synthesis, incorrect
-media paths --- were observable only over HTTP.
+because a number of defects (stale processes, broken answer synthesis, incorrect
+media paths) were observable only over HTTP.
 
 \subsection{Architectural Overview}
 
@@ -30,10 +30,10 @@ calls. A FastAPI service owns the entire video pipeline and exposes it as a
 self-describing HTTP API. Persistence is divided across object storage for media, a
 relational database for application state, and a vector database for retrieval.
 
-Composition within the analysis service is deliberately \emph{in-process}: aggregators
+Composition within the analysis service is deliberately in-process: aggregators
 consume analyzer output directly rather than over HTTP, and HTTP is reserved for the
 external boundary. Analyzers and aggregators are held in registries, which is what
-makes NFR-8 achievable --- the ingest path, the store and the API iterate over a
+makes NFR-8 achievable, because the ingest path, the store and the API iterate over a
 registry and never name a specific analyzer.
 
 The analysis service has no concept of users, projects or row-level security: any
@@ -93,8 +93,8 @@ Client & \texttt{content/docs/} & The MDX documentation site: concepts, workspac
 
 Ingestion is asynchronous. The service accepts a file or a link, returns immediately
 with a job identifier, and processes the recording on a background thread through the
-stages specified in Section~5. The job reports its stage --- fetching, chunking,
-analyzing, indexing, aggregating, complete --- and the client polls it, reconciling the
+stages specified in Section~5. The job reports its stage as fetching, chunking,
+analyzing, indexing, aggregating or complete, and the client polls it, reconciling the
 result into the recording's row. Because jobs are held in memory, a restart mid-ingest
 is detected by the client, which either recovers the recording from its persisted
 records or fails the row explicitly so that re-indexing becomes the route forward.
@@ -129,7 +129,7 @@ Aggregation models & GLiNER for zero-shot named-entity recognition, a transforme
 Embeddings      & BGE-small-en-v1.5 via sentence-transformers, executed locally \\
 Vector store    & Qdrant, one point per chunk with five named vectors \\
 Media I/O       & OpenCV, PyAV, soundfile, Pillow \\
-Application data & Supabase --- Postgres, Auth and Storage \\
+Application data & Supabase: Postgres, Auth and Storage \\
 Deployment      & Vercel (client), CUDA-capable host (core service), Supabase Cloud, Qdrant \\
 \bottomrule
 \end{tabularx}
@@ -141,7 +141,7 @@ Deployment      & Vercel (client), CUDA-capable host (core service), Supabase Cl
 
 \begin{itemize}
   \item \textbf{Python for the analysis service.} Every model the system depends upon
-        --- diarization, CLIP, Whisper, YOLO, the embedding model --- is distributed
+        (diarization, CLIP, Whisper, YOLO, the embedding model) is distributed
         as a Python library first. No other runtime would have permitted this number
         of models to be assembled in the time available.
   \item \textbf{FastAPI.} Asynchronous request handling for long-running ingest jobs,
@@ -215,8 +215,8 @@ The design reserves room in the areas expected to be extended next:
         to separate two people, the stored bounding boxes provide the crops required
         to compare them visually.
   \item \textbf{Additional analyzers.} Any pass that reads a chunk and returns
-        structured output --- licence plates, pose estimation, crowd density --- may be
-        added as a single module with no change elsewhere.
+        structured output, such as licence plates, pose estimation or crowd density,
+        may be added as a single module with no change elsewhere.
   \item \textbf{Agent access over MCP.} The API already describes itself; exposing it
         as a tool server would permit an external assistant to use it directly.
 \end{itemize}

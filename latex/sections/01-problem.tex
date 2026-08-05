@@ -2,31 +2,45 @@
 
 \subsection{System Identification}
 
-This document specifies the design of \textbf{FalconVQA} --- \emph{Fast Augmented
-Language-based CONversational Video Question Answering} --- a retrieval and question
+This document specifies the design of \textbf{FalconVQA}, short for Fast Augmented
+Language-based CONversational Video Question Answering. It is a retrieval and question
 answering system for recorded video, developed with surveillance footage as its
 primary application domain. The name records the four properties the system is
-designed around: retrieval that is \emph{fast} enough to be interactive, an index
-\emph{augmented} beyond the raw signal with structured descriptions produced by vision
-and audio models, a \emph{language-based} interface in which both the index and the
-query are natural language, and a \emph{conversational} access path in which an
+designed around: retrieval that is \textbf{fast} enough to be interactive, an index
+\textbf{augmented} beyond the raw signal with structured descriptions produced by vision
+and audio models, a \textbf{language-based} interface in which both the index and the
+query are natural language, and a \textbf{conversational} access path in which an
 operator or an autonomous agent asks questions of a recording and receives cited
 answers rather than a list of files.
 
 \subsection{Problem Statement}
 
-Recorded surveillance exists as a continuous timeline indexed by nothing but a clock.
-Locating an incident therefore requires the operator to select a date and time and
-review the footage manually until the incident is observed. This procedure is
-tractable only when the time of the incident is already known. In practice it is not:
-what is available is a description of the event, obtained from a witness or a report
---- for example, \emph{a man in a yellow shirt left a bag near the checkout}. No stage
-of the recording chain produces a record of what the footage contains, so no such
-description can be used as a query.
+A natural language front end that extracts the relevant footage from a given recorded
+video by description alone.
 
-General-purpose video understanding tools do not close this gap, because they are
-designed for edited media and depend on three properties that surveillance footage
-does not exhibit:
+\subsubsection*{Background}
+
+Surveillance footage is generally recorded onto network video recorders and other
+digital storage devices. Finding a particular piece of footage is carried out by
+entering the date and time of the incident and reviewing what comes back, which is
+slow. The recording exists as a continuous timeline indexed by nothing but a clock, so
+the date and time are the only handles the operator has.
+
+That procedure works only when the time of the incident is already known. In practice it
+usually is not. What is available instead is a description of the event, obtained from a
+witness or from a report: a man in a yellow shirt left a bag near the checkout. No stage
+of the recording chain produces any account of what the footage contains, so a
+description of this kind cannot be used as a query at all.
+
+\subsubsection*{Challenge}
+
+To develop a simple natural language front end in which the operator types a description
+of the event into a prompt box, and the matching footage is extracted and played back.
+
+Two things stand between the description and the playback. The first is that the footage
+carries no description to match against, so one has to be derived. The second is that
+general-purpose video understanding tools do not derive it, because they are built for
+edited media and rely on three properties surveillance footage does not have:
 
 \begin{itemize}
   \item \textbf{Shot boundaries.} A fixed camera produces none.
@@ -39,11 +53,10 @@ Applied to such footage, these tools either return the entire recording as a sin
 segment or subdivide it into a large number of near-identical segments. Neither result
 is searchable.
 
-The problem addressed by this project is therefore twofold: to derive a descriptive
-representation of footage that possesses little intrinsic structure, and to make that
-footage retrievable through that representation. The operator states what is being
-looked for in natural language and receives the corresponding moment, timestamped and
-ready for playback.
+The problem this project addresses is therefore twofold: derive a descriptive
+representation of footage that has little intrinsic structure, and make the footage
+retrievable through that representation. The operator states what is being looked for in
+plain language and receives the corresponding moment, timestamped and ready to play.
 
 \subsection{Project Objectives}
 
@@ -73,5 +86,7 @@ enhancements that distinguish the system from a conventional caption-and-embed p
 Section~5 is the detailed design: each of the four pipeline stages, the models employed,
 the parameters governing them and the outputs produced. Section~6 specifies the
 architecture and technology stack, and Section~7 the database design across all four
-stores. Section~8 describes the user interface and the acceptance test plan. Section~9
-sets out the execution schedule and the distribution of work.
+stores. Section~8 describes the user interface. Section~9 states the acceptance criteria
+and the test cases that establish them, followed by the plan under which those cases are
+run: the environment, the test data, the entry and exit criteria, and what is automated.
+Section~10 sets out the execution schedule and the distribution of work.

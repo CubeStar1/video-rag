@@ -1,0 +1,596 @@
+\section{Acceptance Test Cases and Test Plan}
+
+This section states what has to be true for the system to be accepted, gives the test
+cases that establish it, and then sets out the plan under which those cases are run:
+the environment, the test data, the entry and exit criteria, what is automated, and how
+failures are recorded.
+
+\subsection{Acceptance Criteria}
+
+Every requirement from Section~3 is restated below as a condition that can be observed
+to hold or not hold, together with the cases that establish it. A requirement with no
+case would be a requirement nobody agreed how to check, so the third column is also the
+traceability matrix.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{1.2cm}XL{2.7cm}@{}}
+\toprule
+\textbf{Req.} & \textbf{Accepted when} & \textbf{Verified by} \\
+\midrule
+FR-1  & An operator can register, sign in and group recordings into projects, and no account can reach another account's projects, recordings or conversations by any route. & AT-01 to AT-04, AT-06 \\
+FR-2  & A recording can be added by file or by link, the selected analyzers are the ones that run, and the recording reaches \texttt{ready}. & AT-07, AT-08, AT-09 \\
+FR-3  & Stage and progress are visible throughout processing, the rest of the workspace stays usable, and a failure explains itself instead of hanging. & AT-11, AT-12, AT-17, AT-18 \\
+FR-4  & A described event is returned within the leading results, and content that is absent is reported as absent. & AT-19, AT-20, AT-24 \\
+FR-5  & Restricting by time, by content or by recording removes non-matching results and retains matching ones. & AT-21, AT-22, AT-23 \\
+FR-6  & An answer is correct against the ground-truth sheet, carries a timecode for every claim, and is refused when the footage does not support it. & AT-27, AT-28, AT-29 \\
+FR-7  & Selecting a result plays the footage from that moment with no scrubbing, individually or as a reel. & AT-32, AT-33 \\
+FR-8  & Summary, chapters, events, entities and anomalies are produced for a recording and are legible without watching it. & AT-35, AT-37, AT-38 \\
+FR-9  & A multi-turn conversation selects the right tools without the recording being named each turn, and survives being reopened. & AT-30, AT-31 \\
+FR-10 & The stored record for any chunk is retrievable, and the timeline follows the playhead. & AT-34, AT-36 \\
+FR-11 & A recording can be re-examined at another depth without being re-added, and earlier results survive. & AT-14, AT-15 \\
+FR-12 & Every retrieval capability is reachable over the documented API, and a client can be built from the capability endpoint alone. & AT-26, AT-39, AT-41 \\
+\midrule
+NFR-1  & Search returns within 2\,s and an answer within 15\,s on a warm instance. & PT-1, PT-2 \\
+NFR-2  & A recording becomes searchable within roughly three times its own duration. & PT-3 \\
+NFR-3  & Stage and progress refresh at least every 5\,s during ingestion. & AT-11, PT-4 \\
+NFR-4  & Playback of a selected moment begins within 2\,s, including the second and later moments of a reel. & AT-32, AT-33, PT-5 \\
+NFR-5  & No answer is produced without citations, and an unsupported question is declined. & AT-27, AT-29 \\
+NFR-6  & Silent, cut-free, fixed-camera footage yields multiple usable chunks rather than one span. & AT-16 \\
+NFR-7  & Deselecting an analyzer avoids its cost, a gated frame incurs no model call, and reviewing existing results incurs none. & AT-09, AT-26, AT-38, PT-3, PT-6 \\
+NFR-8  & A new analyzer appears in the API and the ingest dialog after one module and one registry line, with no other edit. & AT-10, AT-40 \\
+NFR-9  & Isolation holds at the database and at the agent boundary, including against a fabricated identifier. & AT-03 to AT-06 \\
+NFR-10 & The same file submitted twice is recognised as one recording and is neither stored nor processed twice. & AT-13 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Case Format and Severity}
+
+Each case below gives its precondition, the procedure to follow, and the result that
+constitutes a pass. Cases are grouped by the area they exercise and are intended to be
+run in order within a group, since later cases in a group often depend on state the
+earlier ones create. The fixtures named in the procedures are specified in
+Section~9.11, and the pass conditions for search and question cases are scored against
+the ground-truth sheets described there rather than against a tester's impression at
+the time.
+
+Severity is assigned to a failure as follows. \textbf{Critical} means the system cannot
+be used for its purpose, or a tenant can reach another tenant's data. \textbf{Major}
+means a stated requirement is not met but a workaround exists. \textbf{Minor} means the
+result is correct but the presentation or the timing is not what was intended.
+
+\subsection{Test Cases: Accounts and Tenancy}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-01 & Registration and sign-in. No account exists for the address used. &
+1) Register with an address and password. 2) Sign out. 3) Sign in again. 4) Request a
+guarded route while signed out. &
+The account is created and the session is established. Step 4 redirects to sign-in
+rather than rendering the route or returning data. \\
+
+AT-02 & Project creation and listing. Account A signed in. &
+1) Create two projects. 2) Return to the project list. 3) Open one. 4) Rename it. &
+Both projects appear, newest first. Opening one enters its workspace. The rename is
+reflected in the list without a reload. \\
+
+AT-03 & Cross-account isolation. Account A owns a project holding a ready recording and
+a saved conversation. &
+1) Sign in as B. 2) Inspect the project list, the workspace and the conversation list. &
+B sees none of A's projects, recordings, conversations or messages. B's own lists are
+empty rather than populated with A's rows. \\
+
+AT-04 & Access by identifier. A's project, recording and conversation identifiers are
+known. Signed in as B. &
+1) Request each of A's identifiers directly by URL. 2) Repeat against the client's own
+API routes. &
+Every request is refused or returns empty. No row belonging to A is returned by any
+route, which is row-level security rather than interface filtering. \\
+
+AT-05 & Agent scoping against a fabricated identifier. B signed in, conversation
+attached to B's project. &
+1) Ask the agent a question naming a recording identifier that belongs to A. &
+The identifier is filtered out by the project scoping function. The agent answers from
+B's own recordings or states that the recording is not in this project. It never
+returns content from A's footage. \\
+
+AT-06 & Cascading delete. A owns a project with recordings, a conversation and messages. &
+1) Delete the project. 2) Query for the child rows directly. &
+Recordings, conversations and messages belonging to the project are gone. No orphaned
+row remains. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Cases: Ingestion and Processing}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-07 & Add a recording by upload. Empty project. &
+1) Open the ingest dialog. 2) Select \texttt{cctv-shopping}. 3) Accept the default
+analyzers and chunking mode. 4) Submit and wait. &
+The recording appears immediately with a poster frame, advances through its stages, and
+reaches \texttt{ready}. Chunk count and duration are populated. \\
+
+AT-08 & Add a recording by link. A reachable direct video URL. &
+1) Choose the link tab. 2) Paste the URL. 3) Submit and wait. &
+The service fetches the file, hashes it, and the recording reaches \texttt{ready} with
+the same behaviour as an upload. \texttt{source\_url} and \texttt{playback\_url} both
+resolve. \\
+
+AT-09 & Analyzer selection is honoured. Ingest dialog open. &
+1) Deselect people and text recognition, leaving scene and transcription. 2) Ingest. 3)
+Inspect the stored record and the recording's analyzer list once ready. &
+Only the selected analyzers appear in the produced list. No chunk carries a key for a
+deselected analyzer, and no cost was incurred for one. \\
+
+AT-10 & Analyzer list is discovered, not hard-coded. Analysis service running. &
+1) Open the ingest dialog. 2) Compare its analyzer list against the capability
+endpoint's response. &
+The two agree exactly. The dialog builds its list from the endpoint rather than from a
+list compiled into the client. \\
+
+AT-11 & Progress is visible and the interface stays usable. Ingestion of a 5-minute
+recording in progress. &
+1) Observe the recording card throughout. 2) While it processes, open another recording
+and run a search. &
+Stage and progress update at least every 5 seconds and move monotonically through
+fetching, chunking, analyzing, indexing and aggregating. The rest of the workspace
+remains responsive. \\
+
+AT-12 & Only ready recordings are searchable. A recording mid-ingest. &
+1) Attempt to include it in a search or a question. &
+The interface states that the recording is still being processed. It does not return an
+empty result set that would read as nothing found. \\
+
+AT-13 & Idempotent ingestion. \texttt{cctv-shopping} already ingested into project P. &
+1) Add the identical file again to project P. 2) Add it to a second project Q. 3)
+Inspect the object storage path and the record store. &
+In P the file is recognised as the same recording by its content hash: it is not
+uploaded, re-analysed or duplicated. In Q a separate row exists, but both rows share one
+\texttt{core\_video\_id}, one stored object and one record document. \\
+
+AT-14 & Re-examine at a different depth. A recording indexed at
+\texttt{audio\_video:5-20}. &
+1) Re-index with a different chunking configuration. 2) Search against each
+configuration in turn. &
+Both chunkings coexist. Vectors from the first are not overwritten, and a search scoped
+to one configuration returns only that configuration's chunks. \\
+
+AT-15 & Adding one analyzer to an existing recording. A recording indexed without text
+recognition. &
+1) Re-run with text recognition added. 2) Inspect the other analyzers' chunk records and
+vectors. &
+Text recognition output appears. Every previously produced analyzer's records and
+vectors are intact, because deletion is scoped to the analyzer being re-run. \\
+
+AT-16 & Silent, cut-free footage. \texttt{cctv-shopping}, which has neither speech nor
+hard cuts. &
+1) Ingest with the default preset. 2) Inspect the resulting chunk boundaries and
+descriptions. &
+Multiple chunks are produced, not one span covering the whole recording. Weight
+redistribution puts the load on the signals that fired. Descriptions differ between
+chunks. \\
+
+AT-17 & Failed ingestion explains itself. A URL that does not resolve to a video. &
+1) Submit it. 2) Observe the recording card. &
+The recording reaches \texttt{failed}, the reason is retained on the row and shown, and
+the failure does not leave the workspace in a loading state. \\
+
+AT-18 & Lost job recovery. Ingestion in progress. &
+1) Restart the analysis service mid-ingest. 2) Let the client poll. &
+The client detects that the job no longer exists and either recovers the recording from
+its persisted record or fails the row explicitly, so that re-indexing is available.
+It does not poll indefinitely. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Cases: Search and Filtering}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-19 & Search by description. \texttt{cctv-shopping} ready, ground-truth sheet written. &
+1) Take five events from the sheet. 2) Search for each in natural language, using
+wording that does not repeat the stored description. 3) Record the rank of the correct
+moment. &
+For each query the correct moment is within the top three results, and its timecode is
+within one chunk of the ground-truth timecode. \\
+
+AT-20 & Vector space scoping. Same fixture. &
+1) Search for a person by clothing, scoped to the people vector space. 2) Repeat against
+the combined space. &
+The people-scoped search ranks the correct person higher, because the query is matched
+against a short person description rather than the whole chunk record. \\
+
+AT-21 & Time filter. Same fixture. &
+1) Search for an event known to occur late in the recording. 2) Repeat restricted to the
+first 60 seconds. &
+The unrestricted search returns the moment. The restricted search excludes it, and every
+returned span lies inside the requested window. \\
+
+AT-22 & Content filters. Same fixture. &
+1) Filter by an object known to appear. 2) Filter by a minimum person count of three. 3)
+Filter by a speaker on the multi-speaker fixture. &
+Each filter removes non-matching chunks and retains matching ones. The person count
+filter answers a counting query that description similarity alone gets wrong. \\
+
+AT-23 & Recording scope. Two ready recordings in one project. &
+1) Search with both selected. 2) Search with one selected. &
+The scoped search returns results only from the selected recording. \\
+
+AT-24 & Absent content is reported as absent. Any ready recording. &
+1) Search for something the ground-truth sheet confirms is not present. &
+The score threshold suppresses the nearest neighbours and the result is empty, rather
+than the top-ranked unrelated chunk being presented as a match. \\
+
+AT-25 & Unknown filter is rejected. Direct API access. &
+1) Issue a search carrying a misspelled filter name. &
+The request fails with an error naming the nearest valid filter. The filter is not
+silently ignored, which would return plausible but wrong results. \\
+
+AT-26 & Response detail levels. Direct API access. &
+1) Issue the same search at \texttt{minimal}, \texttt{standard} and \texttt{full}. 2)
+Compare the payloads. &
+All three return the same ranked moments. The payload grows with the level, and
+\texttt{minimal} is small enough to be economical for an agent. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Cases: Question Answering and Conversation}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-27 & Answer with citations. \texttt{cctv-shopping} ready. &
+1) Ask five questions drawn from the ground-truth sheet. 2) Check each claim against the
+sheet. 3) Follow each citation. &
+Every answer is factually correct against the sheet. Every claim carries a timecode
+reference, and following a reference plays footage that supports the claim. \\
+
+AT-28 & Routing to the right aggregate. Same fixture, aggregates computed. &
+1) Ask about a specific person. 2) Ask what was unusual. 3) Ask how busy the store was.
+4) Inspect the routing recorded on each response. &
+The person question routes to entities, the unusual question to novelty, the busyness
+question to statistics. Routing is reported so that the answer can be traced. \\
+
+AT-29 & Unanswerable question. Any ready recording. &
+1) Ask about something the footage does not show, phrased as though it does. &
+The system states that the footage does not support an answer. It does not synthesise a
+plausible answer, and it does not cite an unrelated moment as evidence. \\
+
+AT-30 & Multi-turn conversation. Project with two ready recordings. &
+1) Ask an opening question. 2) Ask three follow-ups that refer back by pronoun without
+naming the recording. 3) Observe the tools the agent selects. &
+Context carries across turns. The agent chooses search, question or inspection
+operations appropriately without the recording being named again. \\
+
+AT-31 & Conversation persistence. A conversation with several turns. &
+1) Leave the page. 2) Sign out and back in. 3) Reopen the conversation. &
+Every turn is restored in order, including tool calls, results and artifacts. Continuing
+the conversation retains the earlier context. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Cases: Review, Playback and Inspection}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-32 & Play a result at its moment. A search returning several moments. &
+1) Select a result. 2) Observe where playback begins. &
+Playback starts at the result's start timecode with no manual scrubbing, and stops at
+its end. \\
+
+AT-33 & Clip reel. Several results drawn from one recording. &
+1) Open the clip reel panel. 2) Play the moments consecutively. &
+The moments play one after another. The MP4 is loaded once and seeked, so the second
+and later moments start without a fresh load. \\
+
+AT-34 & Timeline studio. A ready recording open. &
+1) Play the recording. 2) Watch the scene, transcript and chapter tracks. 3) Scrub to a
+new position. &
+The timeline follows the playhead, and the region shown corresponds to what was indexed
+at that position. Scrubbing moves the tracks with it. \\
+
+AT-35 & Video-level review. \texttt{cctv-shopping} ready with aggregates computed. &
+1) Open the recording detail view. 2) Read the summary, chapters, events, entities and
+anomalies without watching the footage. 3) Compare against the ground-truth sheet. &
+Each aggregate is produced and legible. The summary and chapters describe what actually
+occurs. Anomalies flag moments the sheet marks as unusual. \\
+
+AT-36 & Index inspection. Same fixture. &
+1) Open the chunk map. 2) Select a chunk. 3) Read its stored record across the tabs. &
+The description, on-screen text, people, objects and speech recorded for that chunk are
+all retrievable, including the raw stored document. \\
+
+AT-37 & Entity linking within a recording. A fixture in which one person appears
+several times. &
+1) Open the people and objects tab. 2) Follow one person's timeline. &
+Separate sightings of the same person are linked into one individual with an ordered
+account of what they did. Two people visible in the same chunk are never merged. \\
+
+AT-38 & Aggregate caching. Aggregates already computed. &
+1) Reopen the detail view. 2) Re-request the aggregates. &
+Cached results are returned with no re-analysis and no model spend. Changing the
+analyzer set marks the cache stale and triggers recomputation. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Cases: Programmatic Access}
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}L{0.9cm}L{3.2cm}XX@{}}
+\toprule
+\textbf{ID} & \textbf{Case and precondition} & \textbf{Procedure} & \textbf{Expected result} \\
+\midrule
+
+AT-39 & Client built from the capability endpoint alone. A ready recording; no access to
+the source. &
+1) Request the capability endpoint. 2) Using only its response, construct and issue a
+valid search with a filter. &
+The endpoint describes every analyzer, vector field, filter and aggregator needed. The
+constructed request succeeds. \\
+
+AT-40 & A new analyzer requires no client change. Analysis service source available. &
+1) Register a trivial analyzer as one module and one registry line. 2) Restart the
+service. 3) Reload the ingest dialog and the capability endpoint. &
+The analyzer appears in both without any edit to ingestion, storage, the API or the
+client. \\
+
+AT-41 & Documented API matches behaviour. Documentation site deployed. &
+1) Take each endpoint from the API reference. 2) Issue it against the running service. &
+Every documented endpoint exists, accepts the documented parameters and returns the
+documented shape. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Non-Functional Verification}
+
+The requirements that state a figure are verified by measurement rather than by
+observation. Each is measured on a warm instance, repeated ten times, and reported as
+the median together with the slowest of the ten, because a target met on average but
+missed regularly is not met.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{1.1cm}L{3.0cm}XL{1.6cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Measurement} & \textbf{Method} & \textbf{Target} \\
+\midrule
+PT-1 & Search latency &
+Time from request to ranked moments at the API, and to rendered results in the browser,
+over ten distinct queries against a 5-minute recording. & $\leq 2$\,s (NFR-1) \\
+PT-2 & Answer latency &
+Same method, over ten questions spanning the routed aggregates. & $\leq 15$\,s (NFR-1) \\
+PT-3 & Processing time &
+Wall-clock from submission to \texttt{ready}, divided by the recording's own duration,
+with the default analyzer set. & $\leq 3\times$ duration (NFR-2) \\
+PT-4 & Progress refresh &
+Interval between successive stage or progress updates observed on the recording card
+during a full ingest. & $\leq 5$\,s (NFR-3) \\
+PT-5 & Playback latency &
+Time from selecting a result to the first frame at that timecode, for a first moment and
+for a subsequent moment in the same reel. & $\leq 2$\,s (NFR-4) \\
+PT-6 & Response size &
+Token count of an identical five-hit search at each detail level, so that the cost of the
+agent path is known rather than assumed. & Recorded \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Cost control (NFR-7) is verified alongside PT-3 by counting model calls: a re-run of an
+aggregator over stored records must issue no analyzer calls, and a gated frame must issue
+none at all. Robustness (NFR-6) is not a figure and is covered by AT-16.
+
+\subsection{Test Environment}
+
+The cases above are run against a deployed instance over HTTP and through the browser,
+not against modules in isolation, because several of the defects found during
+development (stale background jobs, broken answer synthesis, media paths that resolved
+locally but not remotely) were only visible once the whole system was running.
+Unit-level behaviour of individual analyzers and detectors is out of scope here.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}X@{}}
+\toprule
+\textbf{Element} & \textbf{Configuration under test} \\
+\midrule
+Analysis service & Python 3.13 and FastAPI on a CUDA-capable host, RTX 4060 with 8\,GB
+VRAM, 16\,GB system RAM. Served over HTTP with Uvicorn, not with the reload server. \\
+Client & Next.js production build, deployed on Vercel, pointed at the analysis service
+by environment variable. \\
+Application data & A dedicated Supabase project with row-level security enabled and the
+schema migrations applied from a clean state. \\
+Vector store & Qdrant in embedded mode, backed by a data directory that is emptied
+before a full test pass. \\
+Browsers & Chrome and Firefox, current stable releases, on a desktop viewport. \\
+Accounts & Two registered accounts, A and B, used for every isolation test. Neither is
+an administrator. \\
+Model providers & Live API keys for the vision and language models, and a Hugging Face
+token for the gated diarization model. Tests are not run against mocked providers,
+because provider behaviour is part of what is being accepted. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Latency cases are run warm, meaning model weights are already resident and the media
+cache holds the recording. Cold-start timings are recorded separately and reported as
+such rather than being counted against the response targets, since a first request pays
+for model loading that no subsequent request repeats.
+
+\subsection{Test Data}
+
+The same six recordings are used throughout, so that a result observed in one case can be
+compared against the same footage in another. Each fixture was chosen because it isolates
+a property the others do not exercise.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.0cm}L{3.4cm}X@{}}
+\toprule
+\textbf{Fixture} & \textbf{Content} & \textbf{Property it isolates} \\
+\midrule
+\texttt{cctv-shopping} & 5 minutes, 1280$\times$720, fixed camera, no speech &
+The principal fixture. Neither cuts nor audio, which is the case general-purpose tools
+fail on. Used for chunking, scene, people, object and text cases. \\
+\texttt{chernobyl-\allowbreak audio-video} & 60 seconds, several speakers &
+The only fixture in which speaker change, silence and speaker-attributed transcription
+all fire. Used for every audio path. \\
+\texttt{cctv-license-plate} & Short fixed-camera clip, vehicle plates &
+On-screen text recognition against low-contrast, small-format text. \\
+\texttt{cctv-fire}, \texttt{cctv-car-fire} & Short fixed-camera clips &
+Novelty detection and event extraction, where the anomalous moment is known in advance. \\
+\texttt{cctv-suspect} & Short fixed-camera clip, suspected theft &
+Person description and the moments used in clip reel testing. \\
+Extended set (planned) & Longer footage, multiple cameras, one shared subject &
+Required for cross-recording person linking, which cannot be tested on footage that
+shares no people. Recorded as a known gap in Section~6. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For each fixture, a ground-truth sheet is written before testing begins: a list of what
+occurs in the recording and the timecode at which it occurs. Search and question cases
+are scored against that sheet, so that a re-run of the same case on a later build is
+comparable.
+
+\subsection{Entry, Exit and Suspension}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.8cm}X@{}}
+\toprule
+\textbf{Criterion} & \textbf{Condition} \\
+\midrule
+Entry & The full pipeline runs end to end on at least one fixture; the client is
+deployed and reaches the analysis service; migrations are applied; both test accounts
+exist; ground-truth sheets are written. \\
+Exit & Every Critical and Major case passes. No Critical or Major defect is open. Any
+open Minor defect is recorded with the reason it is accepted. Every requirement in
+Section~9.1 traces to at least one passing case. \\
+Suspension & Testing stops if the analysis service is unreachable, a model provider is
+returning errors, or a defect prevents ingestion from completing, since almost every
+later case depends on an indexed recording. \\
+Resumption & Testing resumes from the start of the group in which it was suspended,
+not from the individual case, because a suspended run may have left partial state. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Test Automation}
+
+Not every case is worth automating. The ones that are worth automating are those run
+repeatedly whose pass condition a machine can check: an HTTP status, a rank, a count, a
+returned identifier. The ones that are not are those whose pass condition is a judgement
+about footage, and those stay manual. The split is set out below.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.9cm}L{3.0cm}X@{}}
+\toprule
+\textbf{Layer} & \textbf{Tooling} & \textbf{What it covers} \\
+\midrule
+API regression &
+Postman collection with an environment file, run headless by Newman &
+Every endpoint in the API reference, with assertions on status, response shape and the
+capability endpoint's contents. Covers AT-25, AT-26, AT-39 and AT-41 directly, and
+builds on the collection already maintained alongside the service documentation. \\
+Retrieval scoring &
+A Python harness over the ground-truth sheets &
+Issues the recorded queries against a live server and asserts the rank of the expected
+moment and the timecode it resolves to. This is what turns AT-19 to AT-24 from a
+subjective judgement into a number comparable across builds. \\
+Pipeline benchmarks &
+The existing \texttt{scripts/bench.py} &
+Per-stage timings for detectors, fusion, chunking and export on a fixture, which is the
+instrument PT-3 reads. Extended to record search and answer latency for PT-1 and PT-2. \\
+Tenancy checks &
+SQL assertions run as each test account &
+Attempts a read of the other account's rows in every table and asserts that nothing is
+returned. Covers AT-03, AT-04 and AT-06, which are the cases most costly to get wrong
+and least interesting to repeat by hand. \\
+Browser flows &
+Playwright &
+Sign-in, project creation, ingest to \texttt{ready}, search, and playback starting at the
+expected timecode. Covers the happy path of AT-01, AT-02, AT-07, AT-11 and AT-32. \\
+\midrule
+Manual only &
+Structured checklist against the ground-truth sheets &
+Whether a description is a fair account of the footage, whether a summary reads
+sensibly, whether linked people are the same person, and whether an answer is genuinely
+supported by the moment it cites. These are AT-27, AT-28, AT-35 and AT-37, and a machine
+scoring them would only be checking one model against another. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two constraints shape how far automation is taken. The pipeline needs a GPU and live
+model providers, so the suite cannot run on a hosted runner without one, and a full
+ingest of the principal fixture costs real money on every run. The suite is therefore
+split: the API regression, tenancy checks and browser flows run against a pre-indexed
+fixture and are cheap enough to run on every change, while the retrieval scoring and
+benchmark runs, which require a fresh ingest, are run before a release rather than on
+every commit.
+
+\subsection{Defect Recording and Reporting}
+
+Each executed case is recorded with its identifier, the build and fixture it ran against,
+the observed result, and a pass or fail verdict. A failure is logged with its severity,
+the request or interaction that produced it, and whatever the system reported at the
+time. Because ingestion runs as a background job, a failure during processing is recorded
+together with the stage the job had reached and the reason retained on the recording row,
+since that is usually the only account of what went wrong.
+
+A defect is closed when the case that found it passes on a later build and the cases
+around it in the same group still pass. A fix that repairs one case and breaks its
+neighbour is not a fix, which is why the resumption rule above restarts a group rather
+than a single case.

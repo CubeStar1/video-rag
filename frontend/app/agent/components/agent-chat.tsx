@@ -204,11 +204,11 @@ export function AgentChat({
                 disabled={isBusy}
               />
 
-              <ModelSelector
+              {/* <ModelSelector
                 key={selectedModel}
                 selectedModelId={selectedModel}
                 onModelChange={handleModelChange}
-              />
+              /> */}
             </PromptInputTools>
             <PromptInputSubmit
               disabled={!input.trim() && !isBusy}

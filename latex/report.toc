@@ -2,21 +2,21 @@
 \contentsline {subsection}{\numberline {1.1}System Identification}{2}{subsection.1.1}%
 \contentsline {subsection}{\numberline {1.2}Problem Statement}{2}{subsection.1.2}%
 \contentsline {subsection}{\numberline {1.3}Project Objectives}{3}{subsection.1.3}%
-\contentsline {subsection}{\numberline {1.4}Document Organisation}{3}{subsection.1.4}%
-\contentsline {section}{\numberline {2}Solution Overview}{3}{section.2}%
+\contentsline {subsection}{\numberline {1.4}Document Organisation}{4}{subsection.1.4}%
+\contentsline {section}{\numberline {2}Solution Overview}{4}{section.2}%
 \contentsline {subsection}{\numberline {2.1}Partitioning the Recording}{4}{subsection.2.1}%
-\contentsline {subsection}{\numberline {2.2}Analysing Each Chunk}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.2}Analysing Each Chunk}{5}{subsection.2.2}%
 \contentsline {subsection}{\numberline {2.3}Indexing and Aggregation}{5}{subsection.2.3}%
 \contentsline {subsection}{\numberline {2.4}Search and Question Answering}{5}{subsection.2.4}%
-\contentsline {section}{\numberline {3}Requirements Analysis}{5}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Functional Requirements}{5}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{7}{subsection.3.2}%
+\contentsline {section}{\numberline {3}Requirements Analysis}{6}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Functional Requirements}{6}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{6}{subsection.3.2}%
 \contentsline {section}{\numberline {4}Creative Enhancements}{8}{section.4}%
 \contentsline {section}{\numberline {5}Detailed Design of the Processing Pipeline}{10}{section.5}%
-\contentsline {subsection}{\numberline {5.1}Stage 1 --- Chunking}{10}{subsection.5.1}%
-\contentsline {subsection}{\numberline {5.2}Stage 2 --- Analysis}{11}{subsection.5.2}%
-\contentsline {subsection}{\numberline {5.3}Stage 3 --- Indexing and Aggregation}{14}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}Stage 4 --- Retrieval and Question Answering}{16}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.1}Stage 1: Chunking}{10}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Stage 2: Analysis}{11}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Stage 3: Indexing and Aggregation}{14}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Stage 4: Retrieval and Question Answering}{16}{subsection.5.4}%
 \contentsline {section}{\numberline {6}Architecture and Technology Stack}{18}{section.6}%
 \contentsline {subsection}{\numberline {6.1}Design Methodology}{18}{subsection.6.1}%
 \contentsline {subsection}{\numberline {6.2}Architectural Overview}{18}{subsection.6.2}%
@@ -30,14 +30,26 @@
 \contentsline {section}{\numberline {7}Database Design}{23}{section.7}%
 \contentsline {subsection}{\numberline {7.1}Storage Strategy}{23}{subsection.7.1}%
 \contentsline {subsection}{\numberline {7.2}Application Database}{23}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Object Storage}{26}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}Analysis Record Store}{27}{subsection.7.4}%
-\contentsline {subsection}{\numberline {7.5}Vector Store}{28}{subsection.7.5}%
-\contentsline {subsection}{\numberline {7.6}Cross-Store Identity}{30}{subsection.7.6}%
-\contentsline {section}{\numberline {8}User Interface and Acceptance Planning}{31}{section.8}%
-\contentsline {subsection}{\numberline {8.1}Interface Design}{31}{subsection.8.1}%
-\contentsline {subsection}{\numberline {8.2}Acceptance Test Plan}{32}{subsection.8.2}%
-\contentsline {subsection}{\numberline {8.3}Datasets}{34}{subsection.8.3}%
-\contentsline {section}{\numberline {9}Execution Plan}{35}{section.9}%
-\contentsline {subsection}{\numberline {9.1}Schedule}{35}{subsection.9.1}%
-\contentsline {subsection}{\numberline {9.2}Distribution of Work}{35}{subsection.9.2}%
+\contentsline {subsection}{\numberline {7.3}Object Storage}{25}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Analysis Record Store}{25}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}Vector Store}{26}{subsection.7.5}%
+\contentsline {subsection}{\numberline {7.6}Cross-Store Identity}{27}{subsection.7.6}%
+\contentsline {section}{\numberline {8}User Interface Design}{28}{section.8}%
+\contentsline {section}{\numberline {9}Acceptance Test Cases and Test Plan}{30}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Acceptance Criteria}{30}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Case Format and Severity}{32}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Test Cases: Accounts and Tenancy}{32}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Test Cases: Ingestion and Processing}{32}{subsection.9.4}%
+\contentsline {subsection}{\numberline {9.5}Test Cases: Search and Filtering}{34}{subsection.9.5}%
+\contentsline {subsection}{\numberline {9.6}Test Cases: Question Answering and Conversation}{34}{subsection.9.6}%
+\contentsline {subsection}{\numberline {9.7}Test Cases: Review, Playback and Inspection}{35}{subsection.9.7}%
+\contentsline {subsection}{\numberline {9.8}Test Cases: Programmatic Access}{37}{subsection.9.8}%
+\contentsline {subsection}{\numberline {9.9}Non-Functional Verification}{37}{subsection.9.9}%
+\contentsline {subsection}{\numberline {9.10}Test Environment}{37}{subsection.9.10}%
+\contentsline {subsection}{\numberline {9.11}Test Data}{38}{subsection.9.11}%
+\contentsline {subsection}{\numberline {9.12}Entry, Exit and Suspension}{39}{subsection.9.12}%
+\contentsline {subsection}{\numberline {9.13}Test Automation}{39}{subsection.9.13}%
+\contentsline {subsection}{\numberline {9.14}Defect Recording and Reporting}{40}{subsection.9.14}%
+\contentsline {section}{\numberline {10}Execution Plan}{41}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Schedule}{41}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Distribution of Work}{41}{subsection.10.2}%

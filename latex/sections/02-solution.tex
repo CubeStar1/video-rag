@@ -23,7 +23,7 @@ Where a signal produces no events at all, its weight is redistributed across the
 signals that did fire. This behaviour is essential rather than incidental: fixed-camera
 footage contains no hard cuts and frequently no speech, and without redistribution the
 entire recording is returned as a single chunk. Two further modes are provided for
-cases in which fusion is not wanted --- a caller-supplied weighting, or fixed spans of
+cases in which fusion is not wanted: a caller-supplied weighting, or fixed spans of
 $N$ seconds with no detectors run at all.
 
 The chunking configuration is stored alongside the resulting records, so that a single
@@ -43,7 +43,7 @@ and act as gates. If YOLO detects no object in a frame and EasyOCR finds no text
 frame is never submitted to the vision model. Frames are additionally deduplicated: a
 frame is retained only if it differs sufficiently from the last frame retained. The
 similarity threshold is adaptive with an absolute ceiling, a configuration arrived at
-by measurement --- a fixed threshold retained a single frame on a static camera, and a
+by measurement: a fixed threshold retained a single frame on a static camera, and a
 purely relative threshold began selecting compression noise. Frames are read
 sequentially rather than by seeking, which was measured to be approximately
 $22\times$ faster.
@@ -57,7 +57,7 @@ against a short description of a person rather than competing against everything
 recorded for that chunk. Embeddings are computed locally, and each point carries a
 typed payload against which structured filters are applied.
 
-Twelve aggregators then run over the saved analyzer output --- not over the video ---
+Twelve aggregators then run over the saved analyzer output, not over the video,
 in an order derived from their declared dependencies. They produce the video-level
 material: statistics, novelty, speaker statistics, summary, chapters, events, named
 entities, sentiment, linked person entities, linked object entities, entity timelines
