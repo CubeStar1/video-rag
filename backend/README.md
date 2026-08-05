@@ -56,10 +56,26 @@ Every returned moment is normalised to
 
 `POST /api/videos/ingest` uploads the URL, then a background task runs:
 
-1. **Understand** — `spoken_words` (→ `transcript`) and a schema'd `vlm` analyzer (→ `scene`),
-   shot segmentation, 480p transform, 4 frames per scene.
-2. **Index** — each successful artifact becomes an index named after its analyzer, so
-   `transcript` and `scene` are consistent across every video and can be searched together.
+1. **Understand** — seven analyzers on VideoDB's own prompts and output shapes:
+   `spoken_words` (→ `transcript`), `vlm` (→ `scene`), `ocr`, `object_detection`
+   (→ `objects`), `activity_recognition` (→ `activity`), `location_detection`
+   (→ `location`) and `brand_detection` (→ `brands`). Shot segmentation, 480p transform,
+   4 frames per scene for the VLM-backed analyzers and one frame per second for object
+   detection. Only the model tier and frame budget are ours — see `build_analyzers()`.
+   `OBJECT_DETECTION_MODEL` must stay `default`: naming `rtdetr-v2-r50vd` needs a running
+   Sandbox Compute instance and fails the whole run without one.
+2. **Index** — each successful artifact becomes an index named after its analyzer plus
+   `INDEX_GENERATION` (`scene_v2`, `transcript_v2`, …), so the names are consistent
+   across every video and can be searched together. `use_for` and `fields` are left to
+   VideoDB, which derives them from the data and drops `semantic` on artifacts with no
+   embeddable top-level text.
+
+   An index name is a schema contract for the whole collection: two videos whose
+   artifacts have different field shapes cannot share a name. `index.delete()` frees a
+   name, but **deleting a video does not** — its indexes are orphaned, keep holding
+   their names, and can no longer be reached to delete. That is why the delete endpoint
+   drops indexes before the video, and why `INDEX_GENERATION` exists: bump it (and the
+   matching constant in `frontend/lib/videodb/indexes.ts`) when a name is already lost.
 3. **Transcript** — `index_spoken_words(force=True)` so `get_transcript_text()` works.
 
 Progress is written to `public.videos.index_status` and `status`
@@ -67,6 +83,24 @@ Progress is written to `public.videos.index_status` and `status`
 
 Indexing is slow — tens of minutes for a long video is normal. Tune cost/quality with the
 `VLM_*`, `TRANSFORM_RESOLUTION`, and `SHOT_THRESHOLD` env vars.
+
+## Logs
+
+A run logs milestones only, tagged with the last 8 characters of the video id:
+
+```
+22:05:17 INFO    app.routers.videos     uploaded 'demo.mp4' -> m-z-019fcd99…
+22:05:17 INFO    app.services.ingest    [448e284c] understanding 7 analyzers | transcript, scene, … | shot
+22:09:32 INFO    app.services.ingest    [448e284c] 3/7 analyzers done | 4m15s
+22:14:19 INFO    app.services.ingest    [448e284c] understanding done in 9m02s | 7/7 ok
+22:16:57 INFO    app.services.ingest    [448e284c] indexed transcript(214), scene(48), ocr(48), objects(51)
+22:16:58 INFO    app.services.ingest    [448e284c] ready in 11m40s
+```
+
+The pipeline polls every 15s for tens of minutes, so progress is logged only when the
+completed-analyzer count moves — never once per poll. `httpx`, `videodb` and `supabase`
+are pinned to WARNING so their per-request chatter stays out of the way. Set
+`LOG_LEVEL=DEBUG` for tracebacks and the suppressed HTTP detail.
 
 ## Scoping
 

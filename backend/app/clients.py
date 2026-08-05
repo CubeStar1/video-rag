@@ -1,8 +1,13 @@
 """Shared VideoDB and Supabase clients.
 
-Every video lives in the account's default collection. Project scoping is done in
-Supabase — callers pass explicit VideoDB video ids and the services fan out over
-them — because `create_collection()` is plan-gated on free accounts.
+Every video lives in the account's default collection, and project scoping is done in
+Supabase — callers pass explicit VideoDB video ids and the services fan out over them.
+
+`conn.create_collection()` does work, so a second collection is possible if one is ever
+wanted. The one thing it would buy is a fresh set of index names: an index name is a
+schema contract scoped to its collection, and `scene`/`transcript` are unusable in this
+one (see API.md). Moving would mean plumbing a collection id through here and
+re-ingesting everything, which is why the indexes carry a generation suffix instead.
 """
 
 import logging
@@ -53,5 +58,8 @@ def update_video_row(db_video_id: str, payload: dict[str, Any]) -> None:
     """Best-effort status writeback. Never let a Supabase hiccup kill a job."""
     try:
         get_supabase().table("videos").update(payload).eq("id", db_video_id).execute()
-    except Exception:  # noqa: BLE001 - status writeback is advisory
-        logger.exception("Failed to update videos row %s", db_video_id)
+    except Exception as exc:  # noqa: BLE001 - status writeback is advisory
+        # This runs on every poll of a long job, so a persistent outage would print a
+        # traceback every 15 seconds. One line here; the traceback only at DEBUG.
+        logger.warning("status writeback failed for %s: %s", db_video_id, exc)
+        logger.debug("writeback traceback", exc_info=True)

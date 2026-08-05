@@ -1,6 +1,7 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
 import { videodb } from '@/lib/videodb/backend-client'
+import { INDEX } from '@/lib/videodb/indexes'
 import type { SceneSegment, Shot, TranscriptSegment, VideoTimeline } from '@/lib/videodb/types'
 
 type Params = Promise<{ videoId: string }>
@@ -13,12 +14,15 @@ const SCENE_LIMIT = 300
  * A queried shot carries its index rows under `metadata.indexes.<name>`, but the
  * shape varies by index version — fall back to the metadata bag itself.
  */
-function sceneRow(metadata: Record<string, unknown> | null | undefined): Record<string, any> {
+function indexRow(
+  metadata: Record<string, unknown> | null | undefined,
+  name: string
+): Record<string, any> {
   if (!metadata || typeof metadata !== 'object') return {}
 
   const indexes = (metadata as any).indexes
   if (indexes && typeof indexes === 'object') {
-    const rows = indexes.scene ?? Object.values(indexes)[0]
+    const rows = indexes[name] ?? Object.values(indexes)[0]
     const row = Array.isArray(rows) ? rows[0] : rows
     if (row && typeof row === 'object') return row
   }
@@ -26,29 +30,103 @@ function sceneRow(metadata: Record<string, unknown> | null | undefined): Record<
   return metadata as Record<string, any>
 }
 
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.map((item) => String(item)).filter(Boolean)
+/** Every analyzer in a run shares one segmentation, so timestamps line rows up. */
+const timeKey = (shot: Shot) => `${Number(shot.start) || 0}-${Number(shot.end) || 0}`
+
+function label(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text && text !== 'unknown' ? text : null
 }
 
-function toScene(shot: Shot, index: number): SceneSegment {
-  const row = sceneRow(shot.metadata)
-  const setting = row.setting && typeof row.setting === 'object' ? row.setting : null
+/** A tag is a short label, not prose — the analyzers sometimes return a sentence. */
+const TAG_MAX_LENGTH = 40
+
+/**
+ * Pull short labels out of a row, from whichever of `keys` it actually carries.
+ * The task-specific analyzers vary in whether a signal arrives as a string
+ * (`activity`), a string array (`labels`), or an array of objects (`actions`), so
+ * every shape is flattened and anything sentence-length is dropped.
+ */
+function tagsFrom(row: Record<string, any>, keys: string[]): string[] {
+  const tags: string[] = []
+
+  const add = (value: unknown) => {
+    if (Array.isArray(value)) return value.forEach(add)
+    const text = label(
+      value && typeof value === 'object' ? (value as any).label ?? (value as any).name : value
+    )
+    if (text && text.length <= TAG_MAX_LENGTH) tags.push(text)
+  }
+
+  for (const key of keys) add(row[key])
+  return tags
+}
+
+/**
+ * Object detection nests its labels under `frames[].detections[].label`, but the
+ * artifact may also carry a flat `objects` list — collect from whichever exists.
+ */
+function objectLabels(row: Record<string, any>): string[] {
+  const labels = new Set<string>()
+
+  const add = (value: unknown) => {
+    const text = label(value)
+    if (text) labels.add(text)
+  }
+
+  for (const entry of Array.isArray(row.objects) ? row.objects : []) {
+    add(typeof entry === 'object' && entry ? entry.label ?? entry.name : entry)
+  }
+
+  const detectionGroups = [
+    ...(Array.isArray(row.detections) ? [row.detections] : []),
+    ...(Array.isArray(row.frames) ? row.frames.map((frame: any) => frame?.detections) : []),
+  ]
+  for (const group of detectionGroups) {
+    for (const detection of Array.isArray(group) ? group : []) {
+      add(typeof detection === 'object' && detection ? detection.label : detection)
+    }
+  }
+
+  return [...labels]
+}
+
+/** Index name → its rows for this video, keyed by time range. */
+type SideIndexes = Record<string, Map<string, Shot>>
+
+function toScene(shot: Shot, index: number, side: SideIndexes): SceneSegment {
+  const row = indexRow(shot.metadata, INDEX.scene)
+  const key = timeKey(shot)
+
+  const rowOf = (name: string) => {
+    const match = side[name]?.get(key)
+    return match ? indexRow(match.metadata, name) : {}
+  }
+
+  const ocrRow = rowOf(INDEX.ocr)
 
   return {
     id: `${shot.start}-${shot.end}-${index}`,
     start: Number(shot.start) || 0,
     end: Number(shot.end) || 0,
-    description: String(row.scene_description || shot.text || '').trim(),
-    on_screen_text: row.on_screen_text ? String(row.on_screen_text).trim() : null,
-    activity: row.activity ? String(row.activity) : null,
-    setting: setting
-      ? {
-          location_type: setting.location_type ? String(setting.location_type) : null,
-          environment: setting.environment ? String(setting.environment) : null,
-        }
-      : null,
-    visible_objects: toStringArray(row.visible_objects),
+    // A default VLM writes free prose into `text`; `scene_description` only exists on
+    // indexes built by the old schema'd analyzer, and is kept so they still render.
+    description: String(row.text || row.scene_description || shot.text || '').trim(),
+    on_screen_text: label(ocrRow.combined_text ?? ocrRow.text),
+    // Deduped because a place often shows up as both `location` and `setting`.
+    tags: [
+      ...new Set([
+        ...tagsFrom(rowOf(INDEX.activity), ['activity', 'labels', 'actions']),
+        ...tagsFrom(rowOf(INDEX.location), [
+          'location',
+          'location_type',
+          'setting',
+          'time_of_day',
+        ]),
+      ]),
+    ],
+    visible_objects: objectLabels(rowOf(INDEX.objects)),
   }
 }
 
@@ -74,21 +152,40 @@ export async function GET(_request: Request, { params }: { params: Params }) {
 
   const errors: string[] = []
 
-  // One index failing (still building, or never built) must not blank the other.
-  const [sceneResult, transcriptResult] = await Promise.allSettled([
+  const rows = (indexName: string) =>
     videodb.query({
       video_id: video.videodb_video_id,
-      index_name: 'scene',
+      index_name: indexName,
       limit: SCENE_LIMIT,
-      return_fields: ['scene'],
-    }),
+      return_fields: [indexName],
+    })
+
+  // The scene index carries the timeline on its own; these only enrich it, so one of
+  // them failing (still building, or never built) must not blank the strip.
+  const SIDE_INDEXES = [INDEX.ocr, INDEX.objects, INDEX.activity, INDEX.location] as const
+
+  const [sceneResult, transcriptResult, ...sideResults] = await Promise.allSettled([
+    rows(INDEX.scene),
     videodb.transcript(video.videodb_video_id, { segmenter: 'sentence' }),
+    ...SIDE_INDEXES.map(rows),
   ])
+
+  const side: SideIndexes = Object.fromEntries(
+    SIDE_INDEXES.map((name, position) => {
+      const result = sideResults[position]
+      return [
+        name,
+        new Map(
+          result?.status === 'fulfilled' ? result.value.map((shot) => [timeKey(shot), shot]) : []
+        ),
+      ]
+    })
+  )
 
   let scenes: SceneSegment[] = []
   if (sceneResult.status === 'fulfilled') {
     scenes = sceneResult.value
-      .map(toScene)
+      .map((shot, index) => toScene(shot, index, side))
       .filter((scene) => scene.end > scene.start)
       .sort((a, b) => a.start - b.start)
   } else {

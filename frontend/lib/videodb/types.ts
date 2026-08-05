@@ -135,15 +135,22 @@ export interface ClipItem {
   thumbnail_url?: string
 }
 
-/** One indexed scene, flattened out of the `scene` index rows. */
+/**
+ * One moment on the timeline, merged from the analyzers that share a segmentation.
+ * The VLM runs on its default prompt, so `scene` holds prose and nothing structured —
+ * the labels come from the task-specific analyzers instead.
+ */
 export interface SceneSegment {
   id: string
   start: number
   end: number
+  /** From the `scene` index. */
   description: string
+  /** From the `ocr` index. */
   on_screen_text?: string | null
-  activity?: string | null
-  setting?: { location_type?: string | null; environment?: string | null } | null
+  /** Short labels merged from the `activity` and `location` indexes. */
+  tags: string[]
+  /** From the `objects` index. */
   visible_objects?: string[]
 }
 

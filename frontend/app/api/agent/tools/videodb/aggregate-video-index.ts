@@ -1,16 +1,19 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { videodb } from '@/lib/videodb/backend-client'
+import { INDEX, INDEX_CATALOGUE, INDEX_NAMES } from '@/lib/videodb/indexes'
 
 export const aggregateVideoIndexTool = tool({
   description:
-    'Count and group indexed moments. Use for "how many / how often / what appears most" questions instead of retrieving everything and counting by hand. Good group_by fields on the "scene" index: activity, setting.location_type, setting.environment.',
+    'Count and group indexed moments. Use for "how many / how often / what appears most" questions instead of retrieving everything and counting by hand. Group on a short label field — ' +
+    `"${INDEX.objects}" grouped by frames.detections.label answers "what appears most", ` +
+    `"${INDEX.brands}" by brand_names answers "which brands". Indexes: ${INDEX_CATALOGUE}.`,
   inputSchema: z.object({
     video_id: z.string().describe('VideoDB video id'),
-    index_name: z.enum(['scene', 'transcript']).describe('Index to aggregate over'),
+    index_name: z.enum(INDEX_NAMES).describe('Index to aggregate over'),
     group_by: z
       .string()
-      .describe('Field to group by, e.g. "activity" or "setting.environment"'),
+      .describe('Field to group by, e.g. "activity" or "frames.detections.label"'),
     limit: z.number().int().min(1).max(200).default(50),
   }),
   execute: async ({ video_id, index_name, group_by, limit }) => {
