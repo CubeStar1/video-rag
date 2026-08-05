@@ -17,7 +17,7 @@ export interface HeaderConfig {
 
 export const headerConfig: HeaderConfig = {
   brand: {
-    title: "RPA",
+    title: "VideoMind",
     icon: "/next.svg"
   },
   navigationLinks: [
@@ -28,6 +28,10 @@ export const headerConfig: HeaderConfig = {
     {
       href: "/projects",
       label: "Projects"
+    },
+    {
+      href: "/architecture",
+      label: "Architecture"
     }
   ]
 }

@@ -15,23 +15,23 @@ interface Step {
 const steps: Step[] = [
   {
     number: '01',
-    title: 'Sign Up',
-    description: 'Create your account securely using your credentials. Get started instantly.',
+    title: 'Create a Project',
+    description: 'Sign in and open a workspace. Every project keeps its own videos, chats, and clips together.',
   },
   {
     number: '02',
-    title: 'Create a Workflow',
-    description: 'Initiate a conversational session and paste your GitHub repository link.',
+    title: 'Add Your Videos',
+    description: 'Drop in a file or paste a URL. Lectures, meetings, CCTV, interviews — anything with a timeline.',
   },
   {
     number: '03',
-    title: 'Agentic Generation',
-    description: 'Watch the UiPath agent reason, fetch repository structures, and generate YAML pipelines.',
+    title: 'Watch It Index',
+    description: 'The pipeline chunks the video, runs scene, speech, object, and OCR analyzers, then embeds every chunk.',
   },
   {
     number: '04',
-    title: 'Merge the PR',
-    description: 'Review the Pull Request opened by our agent and merge it into your main branch.',
+    title: 'Ask and Get Clips',
+    description: 'Ask a question, tag the videos to search, and get a cited answer with the moments playable beside it.',
   },
 ]
 
@@ -128,10 +128,10 @@ export function GettingStarted() {
           transition={{ duration: 0.5 }}
         >
           <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
-            Get started in minutes
+            From upload to answer
           </h2>
           <p className="text-lg text-neutral-400">
-            From sign-up to a merged Pull Request, completely redefining pipeline generation.
+            Four steps between raw footage and a question you can finally ask it.
           </p>
         </motion.div>
 

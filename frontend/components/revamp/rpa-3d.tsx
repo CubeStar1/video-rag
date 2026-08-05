@@ -85,8 +85,8 @@ export function PaperPilot3D() {
         className={cn('w-full bg-black relative', 'transition-all duration-1000', 'origin-bottom')}
         style={{
           aspectRatio: '1600/436',
-          maskImage: 'url(/images/rpa-mask.svg)',
-          WebkitMaskImage: 'url(/images/rpa-mask.svg)',
+          maskImage: 'url(/images/video-mind-mask.svg)',
+          WebkitMaskImage: 'url(/images/video-mind-mask.svg)',
           maskSize: 'contain',
           WebkitMaskSize: 'contain',
           maskPosition: 'center',

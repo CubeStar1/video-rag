@@ -3,14 +3,14 @@
 import { cn } from '@/lib/utils'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import {
-  Database,
-  FileSearch,
-  FolderSync,
-  Sparkles,
-  Layers,
-  Zap,
-  BookOpen,
-  WifiOff,
+  AudioLines,
+  Scan,
+  Clapperboard,
+  MessageSquareQuote,
+  Scissors,
+  BarChart3,
+  Search,
+  Server,
 } from 'lucide-react'
 import React, { MouseEvent } from 'react'
 import { BackgroundGrid } from './background-grid'
@@ -24,44 +24,44 @@ interface FeatureCard {
 
 const features: FeatureCard[] = [
   {
-    title: 'UiPath Automation',
-    description: 'Seamless orchestration of RPA tasks via advanced LlamaIndex integrations.',
-    icon: <Sparkles className="h-6 w-6" />,
+    title: 'Semantic Moment Search',
+    description: 'Describe what you are looking for and get ranked, timestamped moments across every tagged video.',
+    icon: <Search className="h-6 w-6" />,
   },
   {
-    title: 'Model Context Protocol',
-    description: 'Extend agent capabilities securely through robust FastMCP tools.',
-    icon: <Database className="h-6 w-6" />,
+    title: 'Cited Answers',
+    description: 'Responses stay short and point back at the m:ss timecodes the evidence came from.',
+    icon: <MessageSquareQuote className="h-6 w-6" />,
   },
   {
-    title: 'Workflow Graph',
-    description: 'Interactive node-based visualization mapping the entire agent pipeline.',
-    icon: <Layers className="h-6 w-6" />,
+    title: 'Clip Artifact Panel',
+    description: 'Retrieved moments become a reel you can scrub, filter, and play end to end.',
+    icon: <Scissors className="h-6 w-6" />,
   },
   {
-    title: 'YAML Generation',
-    description: 'Automatically craft linted, project-specific GitHub Actions.',
-    icon: <FileSearch className="h-6 w-6" />,
+    title: 'Speech & Speakers',
+    description: 'Whisper transcripts with diarization, so you know who said what and exactly when.',
+    icon: <AudioLines className="h-6 w-6" />,
   },
   {
-    title: 'Automated PRs',
-    description: 'Deploy ready-to-merge Pull Requests directly to your repository.',
-    icon: <FolderSync className="h-6 w-6" />,
+    title: 'Visual Understanding',
+    description: 'YOLO detection, CLIP embeddings, and on-screen OCR describe what the frame actually shows.',
+    icon: <Scan className="h-6 w-6" />,
   },
   {
-    title: 'Live Telemetry',
-    description: 'Analyze agent execution run state logs continuously as they happen.',
-    icon: <Zap className="h-6 w-6" />,
+    title: 'Scenes & Chapters',
+    description: 'An interactive timeline of scenes, chapters, and events you can jump straight into.',
+    icon: <Clapperboard className="h-6 w-6" />,
   },
   {
-    title: 'Multi-Model Support',
-    description: 'Switch freely between models tailored for varying reasoning depth.',
-    icon: <BookOpen className="h-6 w-6" />,
+    title: 'Video-Level Insights',
+    description: 'Aggregators roll chunks up into entity timelines, co-occurrence, sentiment, and stats.',
+    icon: <BarChart3 className="h-6 w-6" />,
   },
   {
-    title: 'Secure Context',
-    description: 'Your project structure remains tightly scoped inside the platform.',
-    icon: <WifiOff className="h-6 w-6" />,
+    title: 'Self-Hosted Core',
+    description: 'FastAPI, PyTorch, and Qdrant run the pipeline on your own hardware — your footage stays yours.',
+    icon: <Server className="h-6 w-6" />,
   },
 ]
 
@@ -121,10 +121,10 @@ export function FeatureCards() {
           transition={{ duration: 0.5 }}
         >
           <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
-            Powerful features
+            Built for video
           </h2>
           <p className="text-lg text-neutral-400">
-            Everything you need to deploy enterprise-grade GitHub Actions faster.
+            A full retrieval stack — chunking, analysis, indexing, and answers — purpose-built for footage.
           </p>
         </motion.div>
 

@@ -102,14 +102,14 @@ export function Hero() {
             transition={{ duration: 1, delay: 0.2, ease: 'easeOut' }}
           >
             <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-white md:text-5xl lg:text-7xl xl:text-7xl">
-              Automated
+              Ask Your Videos
               <br />
-              GitHub Workflows
+              Anything
             </h1>
             <p className="max-w-xl text-base md:text-lg">
-              The AI-powered RPA assistant that generates, validates, and deploys your GitHub Actions using UiPath and LlamaIndex.
+              VideoMind is retrieval-augmented generation for video. It splits footage into meaningful scenes, understands what was said and shown, and answers in plain language.
               <br />
-              Accelerate your CI/CD setup with intelligent process automation.
+              Every answer comes back with timecodes and playable clips.
             </p>
           </motion.div>
 
@@ -131,8 +131,8 @@ export function Hero() {
 
             <li className="w-full">
               <SlideUpLink
-                href="/docs"
-                label="View Documentation"
+                href="/architecture"
+                label="See How It Works"
                 variant="secondary"
                 size="md"
                 rotateText
@@ -158,8 +158,8 @@ export function Hero() {
             >
               <div className="bg-[#141414] rounded overflow-hidden border border-white/5 shadow-sm">
                 <Image
-                  src="/landing/rpa-dashboard-dark.png"
-                  alt="RPA Dashboard Preview"
+                  src="/landing/video-mind-dash.png"
+                  alt="VideoMind workspace: agent chat, scene timeline, and clip reel panel"
                   width={2400}
                   height={1600}
                   quality={100}
@@ -179,8 +179,8 @@ export function Hero() {
           <div className="rounded-lg border border-white/5 bg-white/5 p-1 backdrop-blur-sm">
             <div className="rounded overflow-hidden bg-[#141414] border border-white/5 shadow-sm">
                 <Image
-                src="/landing/rpa-dashboard-dark.png"
-                alt="RPA Dashboard Output"
+                src="/landing/video-mind-dash.png"
+                alt="VideoMind workspace: agent chat, scene timeline, and clip reel panel"
                 width={1200}
                 height={800}
                 className="w-full h-auto"

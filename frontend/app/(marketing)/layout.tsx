@@ -4,9 +4,9 @@ import { headerConfig } from '@/lib/config/header'
 import { Footer } from '@/components/revamp/footer'
 
 export const metadata: Metadata = {
-  title: 'RPA',
+  title: 'VideoMind — Ask your videos anything',
   description:
-    'RPA',
+    'Retrieval-augmented generation for video. Search speech and visuals together, and get answers with timecodes and playable clips.',
 }
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {

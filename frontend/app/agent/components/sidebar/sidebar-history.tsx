@@ -273,7 +273,7 @@ export function AgentSidebarHistory({ user }: { user: User | undefined }) {
 
                   <CollapsibleContent>
                     <SidebarMenuSub>
-                      {item.conversations.slice(0, 6).map((conversation) => (
+                      {item.conversations.map((conversation) => (
                         <ConversationRow
                           key={conversation.id}
                           projectId={item.project.id}
