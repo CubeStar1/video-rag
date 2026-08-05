@@ -46,7 +46,8 @@ interface Job {
 
 interface UploadDialogProps {
   projectId: string
-  projectName: string
+  /** Omitted where the caller only knows the id — the chat, for one. */
+  projectName?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onComplete: () => void
@@ -522,10 +523,12 @@ export function UploadDialog({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Add files to</p>
-              <Input value={projectName} readOnly className="bg-muted/40" />
-            </div>
+            {projectName && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Add files to</p>
+                <Input value={projectName} readOnly className="bg-muted/40" />
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="progress" className="pt-4">

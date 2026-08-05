@@ -55,7 +55,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { useAgentStore } from "@/app/agent/store/agent-store";
 import type { ProjectHistoryItem } from "@/app/agent/types";
 
 function ConversationRow({
@@ -72,7 +71,6 @@ function ConversationRow({
   onDelete: (conversationId: string) => void;
 }) {
   const { setOpenMobile } = useSidebar();
-  const handleArtifactClose = useAgentStore((state) => state.handleArtifactClose);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState(conversation.title);
 
@@ -81,10 +79,7 @@ function ConversationRow({
       <SidebarMenuSubButton asChild isActive={isActive} className="pr-8">
         <Link
           href={`/projects/${projectId}/conversations/${conversation.id}`}
-          onClick={() => {
-            handleArtifactClose();
-            setOpenMobile(false);
-          }}
+          onClick={() => setOpenMobile(false)}
         >
           <span className="truncate">{conversation.title}</span>
         </Link>

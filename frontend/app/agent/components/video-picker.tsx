@@ -53,7 +53,7 @@ export function VideoPicker({
 
         {selectable.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-            No videos in this project yet. Upload one from the project page.
+            No videos in this project yet. Add one with the button next to this.
           </p>
         ) : (
           <ul className="max-h-72 overflow-y-auto py-1">
