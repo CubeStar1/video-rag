@@ -9,8 +9,6 @@ import pytest
 from videomind import aggregators, analyzers
 
 
-# --- analyzer registry (AT-10, AT-40) ----------------------------------------
-
 def test_registry_key_matches_each_analyzer_id():
     """A key that disagrees with the analyzer's own id makes the registry a lie:
     `/schema` advertises the key, and the ingest path looks up by id."""
@@ -51,7 +49,7 @@ def test_a_newly_registered_analyzer_needs_no_other_edit(monkeypatch):
 
     assert "trivial" in analyzers.available()
     assert analyzers.get("trivial").id == "trivial"
-    analyzers.validate_selection(["trivial"])  # must not raise
+    analyzers.validate_selection(["trivial"])
 
 
 def test_unknown_analyzer_names_the_registered_ones():
@@ -59,8 +57,6 @@ def test_unknown_analyzer_names_the_registered_ones():
         analyzers.get("does_not_exist")
     assert "default_video" in str(excinfo.value)
 
-
-# --- analyzer selection (AT-09) ----------------------------------------------
 
 def test_validate_selection_accepts_a_valid_subset():
     analyzers.validate_selection(["default_video", "transcript"])
@@ -87,8 +83,6 @@ def test_exclusive_groups_only_name_registered_analyzers():
     for group in analyzers.EXCLUSIVE_GROUPS:
         assert group <= set(analyzers.REGISTRY)
 
-
-# --- aggregator registry and ordering ----------------------------------------
 
 def test_aggregator_registry_key_matches_id():
     for key, aggregator in aggregators.REGISTRY.items():

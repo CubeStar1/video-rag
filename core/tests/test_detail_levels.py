@@ -31,8 +31,6 @@ HIT = {
 }
 
 
-# --- what every level carries -------------------------------------------------
-
 @pytest.mark.parametrize("detail", api_core.DETAIL_LEVELS)
 def test_every_level_identifies_and_locates_the_moment(detail):
     """Whatever else is trimmed, a result has to remain playable and citable."""
@@ -56,8 +54,6 @@ def test_the_timecode_is_human_readable():
 def test_the_score_is_rounded_rather_than_carried_at_full_precision():
     assert api_core._shape(HIT, "minimal")["score"] == 0.7314
 
-
-# --- minimal ------------------------------------------------------------------
 
 def test_minimal_carries_a_snippet_and_not_the_record():
     shaped = api_core._shape(HIT, "minimal")
@@ -84,8 +80,6 @@ def test_the_snippet_falls_back_to_the_flattened_record():
     no_description = {**HIT, "description": "", "text": "we should head back now"}
     assert api_core._shape(no_description, "minimal")["snippet"] == "we should head back now"
 
-
-# --- standard and full --------------------------------------------------------
 
 def test_standard_adds_the_facets_the_interface_renders():
     shaped = api_core._shape(HIT, "standard")
@@ -125,8 +119,6 @@ def test_a_hit_missing_optional_fields_still_shapes():
     assert shaped["people"] == [] and shaped["people_count"] is None
 
 
-# --- stored records (AT-36) ---------------------------------------------------
-
 def test_a_chunk_record_is_retrievable(record_on_disk):
     chunk = api_core.get_chunk(record_on_disk["video_id"], 0)
     assert chunk["chunk_id"] == 0
@@ -160,8 +152,6 @@ def test_an_unknown_chunk_is_not_found(record_on_disk):
 def test_an_unknown_video_is_not_found():
     assert api_core.get_chunk("0000000000000000", 0) is None
 
-
-# --- scoped and paginated reads -----------------------------------------------
 
 def test_chunks_can_be_scoped_to_one_analyzer(record_on_disk):
     """Chunk 1 has no `people` output, so it drops out rather than coming back

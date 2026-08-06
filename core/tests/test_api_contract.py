@@ -13,8 +13,6 @@ from videomind.vectordb.render import VECTOR_FIELDS
 from videomind.vectordb.store import FILTER_SPEC
 
 
-# --- the capability endpoint (AT-39) ------------------------------------------
-
 def test_schema_is_reachable(client):
     assert client.get("/schema").status_code == 200
 
@@ -88,15 +86,11 @@ def test_a_newly_registered_analyzer_appears_in_the_schema(client, monkeypatch):
     assert "trivial" in client.get("/schema").json()["analyzers"]
 
 
-# --- the analyzer endpoint ----------------------------------------------------
-
 def test_analyzers_endpoint_matches_the_registry(client):
     body = client.get("/analyzers").json()
     assert body["analyzers"] == analyzers.available()
     assert body["fields"] == list(VECTOR_FIELDS)
 
-
-# --- liveness -----------------------------------------------------------------
 
 def test_health_reports_what_this_instance_has_loaded(client, monkeypatch):
     """Storage is probed rather than assumed, so the probe is stubbed here --
@@ -126,8 +120,6 @@ def test_health_reports_degraded_rather_than_failing_when_storage_is_unreachable
     assert body["status"] == "degraded"
     assert body["storage"]["error"]
 
-
-# --- documented shapes (AT-41) ------------------------------------------------
 
 def test_every_documented_endpoint_is_registered(client):
     """Taken from docs/ENDPOINTS.md. A route renamed without the reference
@@ -196,8 +188,6 @@ def test_requesting_output_from_an_analyzer_that_never_ran_is_a_client_error(
     assert "ocr" in response.json()["detail"]
 
 
-# --- request validation -------------------------------------------------------
-
 def test_a_search_limit_beyond_the_documented_bound_is_rejected(client):
     """Documented as 1-50. Accepting 500 would be a contract the reference does
     not describe."""
@@ -217,8 +207,6 @@ def test_a_negative_offset_is_rejected(client, record_on_disk):
     response = client.get(f"/videos/{record_on_disk['video_id']}/chunks?offset=-1")
     assert response.status_code == 422
 
-
-# --- the shared secret --------------------------------------------------------
 
 def test_routes_are_guarded_when_a_token_is_configured(monkeypatch):
     """Not an authorisation model -- there are no users here -- just the

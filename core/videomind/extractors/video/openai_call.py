@@ -13,8 +13,6 @@ _client = None
 
 DEFAULT_MODEL = "gpt-5.4-mini"
 
-# Fields a retrieval layer can filter or embed on, alongside the prose blob.
-# strict mode requires every property listed in `required` and no extras.
 SCENE_SCHEMA = {
     "name": "scene_description",
     "strict": True,

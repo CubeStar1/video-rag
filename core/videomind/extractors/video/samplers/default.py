@@ -66,11 +66,6 @@ def sample(
     if similarity_threshold is None:
         consecutive = [(embeddings[i - 1] @ embeddings[i].T).item() for i in range(1, len(embeddings))]
         adaptive = float(np.percentile(consecutive, percentile)) if consecutive else 1.0
-        # The percentile alone is purely relative, so on a chunk where nothing
-        # happens it lands on the median (~0.999) and "distinct" frames get
-        # mined out of compression noise. `max_similarity` is the floor on
-        # real change: above it the chunk is static, nothing clears the bar,
-        # and the min_frames top-up below returns evenly spaced frames instead.
         similarity_threshold = min(adaptive, max_similarity)
 
     kept = [0]
@@ -79,17 +74,11 @@ def sample(
         if similarity < similarity_threshold:
             kept.append(i)
 
-    # Too few distinct frames (a near-static chunk): top up with evenly
-    # spaced ones so the model still sees the chunk unfold over time.
     if len(kept) < min_frames:
         target = min(min_frames, len(candidates))
         picks = np.linspace(0, len(candidates) - 1, target).round().astype(int)
         kept = sorted(set(kept) | set(picks.tolist()))
 
-    # Cost ceiling. Thin against evenly spaced points in *time*, not evenly
-    # spaced positions in the kept list: the latter preserves whatever
-    # clustering the greedy pass produced, which is how a 0.53s-apart pair
-    # survived alongside a 3.74s gap in the same chunk.
     if len(kept) > max_frames:
         targets = np.linspace(timestamps[kept[0]], timestamps[kept[-1]], max_frames)
         chosen = []

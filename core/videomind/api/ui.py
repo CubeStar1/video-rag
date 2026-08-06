@@ -1,11 +1,3 @@
-"""The browser UI, kept separate from the API.
-
-Mounted only when wanted, so the backend can run headless - as a service
-behind another frontend, or for an MCP client that has no use for HTML.
-Controlled by VIDEOMIND_UI=0, an environment variable rather than an argument
-because `uvicorn videomind.api.app:app` builds the app with no way to pass one.
-"""
-
 import os
 
 from fastapi import APIRouter, HTTPException

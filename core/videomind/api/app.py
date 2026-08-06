@@ -1,9 +1,6 @@
 import os
 import warnings
 
-# Must precede any transformers import. transformers probes for TensorFlow and
-# imports it if present, which pulls in oneDNN/absl banners and several seconds
-# of startup for a backend nothing here uses.
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
@@ -28,15 +25,8 @@ app = FastAPI(
     description="Video RAG: chunk, analyse, aggregate, search and ask.",
 )
 
-# Shared secret, checked on every route that reads or writes a video. Unset
-# means open, which is the right default for a machine-local dev server and the
-# wrong one for anything reachable: without it, whoever can open this port has
-# the whole corpus. Not an authorisation model - there are no users here - just
-# the boundary that stops the port from being one.
 API_TOKEN = os.environ.get("VIDEOMIND_API_TOKEN", "").strip()
 
-# Liveness and docs stay open so a deployment can be checked without the secret,
-# and "/" is the UI, which has no way to send a header.
 _OPEN_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
 
 
@@ -48,7 +38,6 @@ async def require_token(request: Request, call_next):
     return await call_next(request)
 
 
-# The API is the product; the UI is one optional client of it.
 if ui.enabled():
     app.include_router(ui.router)
 
@@ -87,8 +76,6 @@ def media(video_id: str):
     url = core.video_url_for(video_id)
     if not url:
         raise HTTPException(404, f"No media for video_id {video_id!r}")
-    # 307, not 302: preserves the method and, unlike 301/308, is not cached, so
-    # a later move to signed URLs cannot be defeated by a stale browser cache.
     return RedirectResponse(url, status_code=307)
 
 
@@ -101,8 +88,6 @@ class QueryRequest(BaseModel):
     score_threshold: float | None = None
     synthesize: bool = True
     detail: str = "standard"
-    # Passed straight through to the store's FILTER_SPEC. Keeping this generic
-    # is what stopped six store filters from being silently unreachable.
     filters: dict = Field(default_factory=dict)
 
 
@@ -111,7 +96,6 @@ def list_analyzers():
     return {
         "analyzers": analyzers.available(),
         "fields": list(VECTOR_FIELDS),
-        # Sets that cannot be selected together, so a UI can enforce it.
         "exclusive_groups": [sorted(g) for g in analyzers.EXCLUSIVE_GROUPS],
     }
 
@@ -269,7 +253,7 @@ def get_entities(video_id: str, min_appearances: int = Query(1, ge=1)):
         stored = core.get_aggregates(video_id, aggregator_id="entity_timelines")
         timelines = {t["entity_id"]: t for t in stored["result"]["timelines"]}
     except ValueError:
-        pass  # timelines are optional
+        pass
 
     for entity in entities:
         if entity["entity_id"] in timelines:

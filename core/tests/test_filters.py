@@ -14,8 +14,6 @@ def keys_of(conditions):
     return [c.key for c in conditions]
 
 
-# --- rejection of what is not declared (AT-25) --------------------------------
-
 def test_an_unknown_filter_raises_rather_than_being_dropped():
     with pytest.raises(ValueError, match="Unknown filter"):
         build_conditions({"objects_": ["trolley"]})
@@ -35,10 +33,8 @@ def test_the_error_lists_every_known_filter_when_nothing_is_close():
 
 
 def test_a_valid_name_is_not_reported_as_a_typo():
-    build_conditions({"objects": ["trolley"]})  # must not raise
+    build_conditions({"objects": ["trolley"]})
 
-
-# --- the four match kinds -----------------------------------------------------
 
 def test_list_filters_match_any_of_their_values():
     conditions = build_conditions({"objects": ["trolley", "shelf"]})
@@ -80,8 +76,6 @@ def test_filters_map_onto_their_payload_fields_not_their_own_names():
     assert keys_of(build_conditions({"min_people": 1})) == ["people_count"]
 
 
-# --- absent filters -----------------------------------------------------------
-
 def test_none_is_not_a_filter():
     """Every caller passes the full parameter set with unused ones set to None."""
     assert build_conditions({"objects": None, "speakers": None}) == []
@@ -104,8 +98,6 @@ def test_an_empty_filter_dict_produces_no_conditions():
     assert build_conditions({}) == []
 
 
-# --- combinations -------------------------------------------------------------
-
 def test_several_filters_all_apply():
     conditions = build_conditions(
         {"video_ids": ["abc"], "objects": ["trolley"], "min_people": 2, "after": 30.0}
@@ -119,8 +111,6 @@ def test_both_ends_of_a_range_can_be_set_at_once():
     assert len(conditions) == 2
     assert all(c.key == "people_count" for c in conditions)
 
-
-# --- the declaration itself ---------------------------------------------------
 
 def test_every_filter_declares_a_key_a_kind_and_a_type():
     """`/schema` publishes all three, and an agent builds its request from them."""

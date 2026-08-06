@@ -4,8 +4,6 @@ from sentence_transformers import SentenceTransformer
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 
-# Models that were trained with an instruction prefix on the *query* side only.
-# Embedding a query without it, or a document with it, measurably hurts recall.
 QUERY_PREFIXES = {
     "BAAI/bge-small-en-v1.5": "Represent this sentence for searching relevant passages: ",
     "BAAI/bge-base-en-v1.5": "Represent this sentence for searching relevant passages: ",

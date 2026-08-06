@@ -1,10 +1,3 @@
-"""Aggregator registry.
-
-To add one: write a module exposing `id`, `depends_on` and
-`aggregate(ctx)`, then register it here. Order is derived from `depends_on`,
-so a new aggregator that reads another's output just declares it.
-"""
-
 from .base import AggregateContext, Aggregator
 from .chapters import ChaptersAggregator
 from .entities import CooccurrenceAggregator, EntityAggregator, EntityTimelineAggregator
@@ -35,7 +28,6 @@ REGISTRY: dict[str, Aggregator] = {
     )
 }
 
-# Which of these cost API calls, so a caller can pick the free ones.
 USES_LLM = frozenset({"summary", "chapters", "events", "entities", "object_entities"})
 
 
@@ -58,7 +50,7 @@ def resolve_order(aggregator_ids, analyzers) -> list[str]:
     """
     requested = list(aggregator_ids)
     for name in requested:
-        get(name)  # validate up front
+        get(name)
 
     available_analyzers = set(analyzers)
     ordered: list[str] = []
@@ -77,7 +69,7 @@ def resolve_order(aggregator_ids, analyzers) -> list[str]:
                     if not visit(dependency, chain + (name,)):
                         return False
                 elif dependency not in available_analyzers:
-                    return False  # needs an analyzer this video does not have
+                    return False
         finally:
             visiting.discard(name)
         ordered.append(name)

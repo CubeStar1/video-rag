@@ -21,10 +21,6 @@ REGISTRY: dict[str, Analyzer] = {
 }
 
 
-# Analyzers that must not be run together. `diarization` is a strict superset
-# of `transcript`: both embed the same Whisper text (their vectors come out
-# cosine-identical), and diarization adds speaker attribution on top. Running
-# both doubles storage and query cost for no retrieval gain.
 EXCLUSIVE_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"transcript", "diarization"}),
 )

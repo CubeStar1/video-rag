@@ -41,8 +41,6 @@ def shopper_chunks():
     ]
 
 
-# --- indexing -----------------------------------------------------------------
-
 def test_indexing_returns_the_number_of_points_written(chunk_store):
     assert index(chunk_store, chunks=shopper_chunks()) == 3
     assert chunk_store.count() == 3
@@ -76,8 +74,6 @@ def test_the_payload_carries_what_a_citation_needs(chunk_store):
     assert hit["video_url"] == URL_A
 
 
-# --- named vector spaces ------------------------------------------------------
-
 def test_a_chunk_without_people_is_not_a_candidate_in_a_people_search(chunk_store):
     """Omitted rather than written empty: the empty aisle should be absent from
     the people space, not merely rank low in it."""
@@ -99,8 +95,6 @@ def test_every_declared_vector_space_is_searchable(chunk_store):
         chunk_store.search("a man with a trolley", field=field, limit=1)
 
 
-# --- scoping (AT-23) ----------------------------------------------------------
-
 def test_a_search_scoped_to_one_recording_excludes_the_other(chunk_store):
     index(chunk_store, video_id=VIDEO_A, url=URL_A, chunks=shopper_chunks())
     index(chunk_store, video_id=VIDEO_B, url=URL_B, chunks=shopper_chunks())
@@ -119,8 +113,6 @@ def test_a_search_scoped_to_one_analyzer_excludes_the_other(chunk_store):
     scoped = chunk_store.search("trolley", limit=10, analyzer_ids=["people"])
     assert {hit["extractor_id"] for hit in scoped} == {"people"}
 
-
-# --- two chunkings of one recording (AT-14) -----------------------------------
 
 def test_two_chunk_configurations_coexist(chunk_store):
     """Indexing the same recording finely must not overwrite the coarse pass."""
@@ -141,8 +133,6 @@ def test_a_search_can_be_scoped_to_one_chunking(chunk_store):
     hits = chunk_store.search("trolley", limit=10, chunk_config="audio_video:20-40")
     assert hits and {hit["chunk_config"] for hit in hits} == {"audio_video:20-40"}
 
-
-# --- content filters (AT-21, AT-22) -------------------------------------------
 
 def test_a_time_window_excludes_moments_outside_it(chunk_store):
     index(chunk_store, chunks=shopper_chunks())
@@ -184,8 +174,6 @@ def test_an_unknown_filter_reaches_the_caller_as_an_error(chunk_store):
         chunk_store.search("anything", limit=10, colour="red")
 
 
-# --- absent content (AT-24) ---------------------------------------------------
-
 def test_a_score_threshold_suppresses_the_nearest_neighbours(chunk_store):
     """Cosine similarity always ranks *something*. The threshold is what makes
     "not in this footage" expressible at all."""
@@ -214,8 +202,6 @@ def test_results_are_ranked_by_score(chunk_store):
     scores = [hit["score"] for hit in chunk_store.search("aisle", limit=10)]
     assert scores == sorted(scores, reverse=True)
 
-
-# --- scoped deletion (AT-15) --------------------------------------------------
 
 def test_deleting_by_recording_alone_removes_all_of_it(chunk_store):
     index(chunk_store, video_id=VIDEO_A, chunks=shopper_chunks())

@@ -64,13 +64,12 @@ class ObjectAnalyzer:
 
     def _sample(self, start: float, end: float, ctx: VideoContext):
         """Frames containing objects, with near-duplicates removed."""
-        # Shared with the people analyzer: one YOLO pass per span, not one each.
         frames = object_detect.detect_in_span(
             ctx, start, end, self.candidate_fps, self.confidence, self.detector
         )
         with_objects = [(t, frame, dets) for t, frame, dets in frames if len(dets) >= self.min_objects]
         if not with_objects:
-            return [], [], []  # nothing detected: no API call for this chunk
+            return [], [], []
 
         embeddings = semantic.embed_images([f for _, f, _ in with_objects])
 
@@ -80,8 +79,6 @@ class ObjectAnalyzer:
                 kept.append(i)
                 continue
             similar = (embeddings[i] @ embeddings[kept[-1]].T).item() >= self.similarity_threshold
-            # Objects entering, leaving or moving counts as a change even when
-            # the frame as a whole still looks the same.
             moved = object_detect.layout_changed(
                 object_detect.layout_signature(with_objects[kept[-1]][2]),
                 object_detect.layout_signature(with_objects[i][2]),
@@ -113,11 +110,9 @@ class ObjectAnalyzer:
             except Exception as exc:
                 return i, {"detections": [], "summary": f"ERROR: {type(exc).__name__}: {exc}"}
 
-            # Plain names populate the existing filterable `objects` payload
-            # field; the rich per-object detail is kept separately.
             output["objects"] = [d["object"] for d in output.get("detections", []) if d.get("object")]
             output["_frames"] = [round(t, 2) for t in frame_times]
-            output["_detector_labels"] = detected  # what YOLO thought, for debugging
+            output["_detector_labels"] = detected
             return i, output
 
         results: list[dict | None] = [None] * len(chunks)
@@ -146,8 +141,6 @@ class ObjectAnalyzer:
             fields["description"] = summary
         if names := ", ".join(output.get("objects", [])):
             fields["objects"] = names
-        # What each object is *for* is often what a search is really after
-        # ("something being used to carry groceries"), so it gets its own space.
         if uses := "; ".join(d.get("context", "") for d in detections if d.get("context")):
             fields["actions"] = uses
         return fields

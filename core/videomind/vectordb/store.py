@@ -20,12 +20,9 @@ from .render import VECTOR_FIELDS
 
 COLLECTION = "chunks"
 
-# Payload fields worth an index: everything queries filter on.
 INDEXED_FIELDS = {
     "video_id": "keyword",
     "extractor_id": "keyword",
-    # Lets a caller that already knows which chunks it wants search exactly
-    # those, instead of re-deriving them from a time range.
     "chunk_id": "integer",
     "chunk_config": "keyword",
     "objects": "keyword",
@@ -35,20 +32,10 @@ INDEXED_FIELDS = {
     "setting": "text",
     "start": "float",
     "end": "float",
-    # Counting is what embeddings cannot do: "mostly empty store" retrieved the
-    # busiest chunk in the video, because a description listing five people
-    # reads the same to a vector as one listing two.
     "people_count": "integer",
 }
 
 
-# The one place a filter is defined. Callers pass a flat dict of these names,
-# so adding a filter here makes it reachable from the API immediately - the
-# previous hand-written parameter list meant six store filters were silently
-# unreachable because nobody had plumbed them through.
-#   kind: any   -> payload field matches one of the given values
-#         exact -> payload field equals the value
-#         gte / lte -> numeric bound on `key`
 FILTER_SPEC: dict[str, dict] = {
     "video_ids":     {"key": "video_id",     "kind": "any",   "type": "list[str]"},
     "chunk_ids":     {"key": "chunk_id",     "kind": "any",   "type": "list[int]"},
@@ -150,9 +137,6 @@ class ChunkStore:
     def _ensure_collection(self):
         existing = {c.name for c in self.client.get_collections().collections}
         if COLLECTION not in existing:
-            # One point per chunk carrying several named vectors, so a chunk
-            # stays a single entity: limit=10 means 10 chunks, the payload is
-            # stored once, and filters apply once.
             self.client.create_collection(
                 COLLECTION,
                 vectors_config={
@@ -160,10 +144,6 @@ class ChunkStore:
                     for field in VECTOR_FIELDS
                 },
             )
-        # Embedded Qdrant ignores payload indexes and warns once per field.
-        # Filtering still works correctly, it just scans rather than using an
-        # index - fine at this scale. The calls are kept so the same code
-        # gains real indexes if this ever points at a Qdrant server.
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*Payload indexes have no effect.*")
             for field, schema in INDEXED_FIELDS.items():
@@ -172,7 +152,7 @@ class ChunkStore:
                         COLLECTION, field_name=field, field_schema=schema
                     )
                 except Exception:
-                    pass  # already indexed
+                    pass
 
     def add_chunks(
         self,
@@ -194,15 +174,13 @@ class ChunkStore:
         for chunk in chunks:
             fields = chunk.get("fields") or {}
             if not fields.get("combined"):
-                continue  # nothing to embed, e.g. a silent chunk's transcript
+                continue
             points.append(chunk)
             field_maps.append(fields)
 
         if not points:
             return 0
 
-        # Embed every field of every chunk in one batched GPU pass, then
-        # scatter the results back to their (chunk, field) slots.
         flat = [(i, name, text) for i, fields in enumerate(field_maps) for name, text in fields.items()]
         embedded = self.embedder.embed_documents([text for _, _, text in flat])
         vectors_per_chunk: list[dict[str, list[float]]] = [{} for _ in points]
@@ -228,18 +206,10 @@ class ChunkStore:
                 "objects": output.get("objects", []),
                 "actions": output.get("actions", []),
                 "tags": output.get("tags", []),
-                # Speaker-attributed analyzers: `speakers` is filterable
-                # ("only chunks where SPEAKER_01 talks"), `turns` carries the
-                # who-said-what breakdown so a result can be shown as a
-                # dialogue without loading the record.
                 "speakers": output.get("speakers", []),
                 "turns": output.get("turns", []),
-                # OCR: the read strings with what each one is.
                 "texts": output.get("texts", []),
-                # Object detection: each object with its appearance and use.
                 "detections": output.get("detections", []),
-                # People: full per-person records, plus a count for range
-                # filters that semantic search cannot answer.
                 "persons": output.get("people", []),
                 "people_count": output.get("people_count"),
             }

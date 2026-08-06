@@ -32,7 +32,7 @@ class SentimentAggregator:
     """
 
     id = "sentiment"
-    depends_on = ("diarization",)  # falls back to transcript when absent
+    depends_on = ("diarization",)
 
     def __init__(self, model_name: str = MODEL):
         self.model_name = model_name

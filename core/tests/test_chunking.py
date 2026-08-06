@@ -19,8 +19,6 @@ def strong(*times):
     return [(t, 1.0) for t in times]
 
 
-# --- weight redistribution (AT-16) -------------------------------------------
-
 def test_a_single_active_signal_still_produces_boundaries():
     """The AT-16 case in miniature: fixed-camera footage has no cuts and no
     speech, so only one detector fires. Without redistribution that signal keeps
@@ -68,8 +66,6 @@ def test_no_events_at_all_yields_no_boundaries():
     assert fuse(events, WEIGHTS["audio_video"], DURATION) == []
 
 
-# --- fusion behaviour ---------------------------------------------------------
-
 def test_boundaries_are_sorted_and_inside_the_recording():
     events = {"speaker": strong(12.0), "silence": strong(28.0),
               "cut": strong(41.0), "semantic": strong(50.0)}
@@ -114,8 +110,6 @@ def test_fusion_is_deterministic():
     assert first == second
 
 
-# --- boundaries to chunks -----------------------------------------------------
-
 def test_chunks_cover_the_recording_without_gaps_or_overlap():
     chunks = boundaries_to_chunks([10.0, 25.0], DURATION)
     assert chunks[0][0] == 0.0
@@ -127,13 +121,10 @@ def test_no_boundaries_gives_exactly_one_chunk():
     assert boundaries_to_chunks([], DURATION) == [(0.0, DURATION)]
 
 
-# --- duration constraints -----------------------------------------------------
-
 def test_long_chunks_split_into_equal_parts_under_the_maximum():
     parts = _split_long_chunks([(0.0, 50.0)], max_duration=20.0)
     assert len(parts) == 3
     assert all(end - start <= 20.0 + 1e-9 for start, end in parts)
-    # Evenly, so there is no useless two-second tail.
     lengths = {round(end - start, 6) for start, end in parts}
     assert len(lengths) == 1
 
@@ -171,8 +162,6 @@ def test_merging_preserves_coverage():
 def test_merging_an_empty_list_is_not_an_error():
     assert _merge_short_chunks([], min_duration=5.0) == []
 
-
-# --- mode selection, which is pure validation and needs no video --------------
 
 def test_interval_must_be_positive():
     with pytest.raises(ValueError, match="interval must be > 0"):

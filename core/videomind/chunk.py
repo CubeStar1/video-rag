@@ -5,7 +5,6 @@ import numpy as np
 
 from .chunking import WEIGHTS, boundaries_to_chunks, collect_boundaries, fuse
 
-# The four boundary signals a custom weighting may set.
 SIGNALS = ("speaker", "silence", "cut", "semantic")
 
 Chunks = list[tuple[float, float]]

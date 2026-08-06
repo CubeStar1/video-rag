@@ -22,8 +22,6 @@ def wait_for(job_id, status, timeout=5.0):
     pytest.fail(f"job {job_id} never reached {status!r}: {jobs.get(job_id)}")
 
 
-# --- lifecycle ----------------------------------------------------------------
-
 def test_a_new_job_starts_queued():
     job = jobs.get(jobs.create())
     assert job["status"] == "queued"
@@ -48,7 +46,7 @@ def test_progress_updates_are_visible_to_a_poller():
 def test_an_update_advances_the_timestamp():
     job_id = jobs.create()
     before = jobs.get(job_id)["updated_at"]
-    time.sleep(1.05)  # the timestamp is second-resolution
+    time.sleep(1.05)
     jobs.update(job_id, stage="indexing")
     assert jobs.get(job_id)["updated_at"] >= before
 
@@ -61,10 +59,8 @@ def test_reading_a_job_returns_a_copy():
 
 
 def test_updating_a_job_that_does_not_exist_is_ignored():
-    jobs.update("nosuchjob", status="done")  # must not raise or create a row
+    jobs.update("nosuchjob", status="done")
 
-
-# --- a lost job (AT-18) -------------------------------------------------------
 
 def test_an_unknown_job_is_reported_as_missing_not_pending():
     """Jobs live in memory and do not survive a restart. The client detects the
@@ -77,8 +73,6 @@ def test_jobs_are_enumerable():
     job_id = jobs.create()
     assert job_id in {job["job_id"] for job in jobs.all_jobs()}
 
-
-# --- background execution -----------------------------------------------------
 
 def test_a_completed_job_carries_its_result():
     job_id = jobs.create()
@@ -138,8 +132,6 @@ def test_arguments_reach_the_work():
                            "clip.mp4", depth=3)
     assert wait_for(job_id, "done")["result"] == {"source": "clip.mp4", "depth": 3}
 
-
-# --- rejecting a bad source before it becomes a background failure ------------
 
 def test_a_non_http_source_is_rejected_while_a_caller_is_still_there():
     """Ingest runs on a background thread, so anything not checked up front

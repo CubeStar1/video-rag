@@ -1,12 +1,3 @@
-"""Start FalconVQA.
-
-    python serve.py                # API + web UI
-    python serve.py --api-only     # API only, no UI
-
-Sets the quieting environment variables before anything imports transformers,
-then hands off to uvicorn.
-"""
-
 import argparse
 import os
 import warnings
@@ -27,8 +18,6 @@ def main() -> None:
                         help="serve the API without the web UI")
     args = parser.parse_args()
 
-    # Read by videomind.api.ui at import time, so it must be set before uvicorn
-    # imports the app - including in the reloader's child process.
     if args.api_only:
         os.environ["VIDEOMIND_UI"] = "0"
 

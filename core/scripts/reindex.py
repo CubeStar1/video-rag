@@ -8,7 +8,6 @@ schema.
 import sys
 from pathlib import Path
 
-# Run from anywhere: scripts live one level below the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import json
@@ -25,8 +24,6 @@ from videomind.api.core import RECORDS_DIR
 from videomind.paths import VECTOR_DIR
 from videomind.vectordb import ChunkStore
 
-# Rebuilt rather than upserted into: a schema change (e.g. new named vectors)
-# is not compatible with the existing collection.
 if VECTOR_DIR.exists():
     shutil.rmtree(VECTOR_DIR)
 

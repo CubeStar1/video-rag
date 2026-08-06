@@ -5,9 +5,6 @@ from .llm import chunk_lines, pick_analyzers
 
 _model = None
 
-# Zero-shot, so the label set is a parameter rather than whatever the model was
-# trained on. These suit surveillance and general footage; pass your own for a
-# different domain.
 DEFAULT_LABELS = (
     "person", "organization", "location", "product", "brand",
     "date", "time", "money", "vehicle", "job title",
@@ -15,8 +12,6 @@ DEFAULT_LABELS = (
 
 PREFERENCE = ("diarization", "transcript", "default_video", "ocr", "people", "object_detection")
 
-# Pronouns and bare determiners are grammatically people but identify nobody,
-# and they dominate a mention count if left in.
 STOP_ENTITIES = frozenset({
     "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
     "my", "your", "his", "its", "our", "their", "this", "that", "these", "those",
@@ -59,9 +54,6 @@ class NERAggregator:
         if not analyzers:
             return None
 
-        # Deliberately not chunk_lines(): for diarization that renders
-        # "SPEAKER_01: ..." and the model duly reports SPEAKER_01 as a person -
-        # extracting our own formatting rather than anything in the video.
         passages = []
         for chunk in ctx.chunks():
             parts = []

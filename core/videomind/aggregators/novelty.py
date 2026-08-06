@@ -19,8 +19,6 @@ class NoveltyAggregator:
     def __init__(self, analyzer_preference: tuple[str, ...] = (
         "default_video", "people", "object_detection", "ocr", "diarization", "transcript",
     )):
-        # Whichever of these the video has, in this order: scene-level output
-        # describes a moment better than a transcript does.
         self.analyzer_preference = analyzer_preference
 
     def aggregate(self, ctx: AggregateContext) -> dict | None:
@@ -40,7 +38,7 @@ class NoveltyAggregator:
             and p.payload.get("extractor_id") == analyzer_id
         ]
         if len(selected) < 3:
-            return None  # too few chunks for "unlike the rest" to mean anything
+            return None
 
         vectors = np.array([p.vector["combined"] for p in selected])
         centroid = vectors.mean(axis=0)
@@ -66,7 +64,5 @@ class NoveltyAggregator:
             "basis": analyzer_id,
             "mean_distance": round(mean, 4),
             "ranked": ranked,
-            # Two sigma from the mean, so "unusual" scales with how varied this
-            # particular video is rather than using a threshold tuned on one clip.
             "outliers": [r for r in ranked if r["novelty"] > mean + 2 * std],
         }

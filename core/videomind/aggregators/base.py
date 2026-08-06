@@ -13,8 +13,8 @@ class AggregateContext:
     """
 
     record: dict
-    results: dict[str, Any] = field(default_factory=dict)  # aggregates already computed
-    store: Any = None  # ChunkStore, for aggregators that read stored vectors
+    results: dict[str, Any] = field(default_factory=dict)
+    store: Any = None
 
     @property
     def video_path(self) -> str:

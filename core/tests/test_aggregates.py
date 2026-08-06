@@ -62,8 +62,6 @@ def stored_record(video_id):
     return json.loads((api_core.RECORDS_DIR / f"{video_id}.json").read_text(encoding="utf-8"))
 
 
-# --- caching (AT-38) ----------------------------------------------------------
-
 def test_an_aggregator_runs_on_the_first_pass(only, run):
     registry = only(CountingAggregator("stats"))
     result = run(aggregator_ids=["stats"])
@@ -113,8 +111,6 @@ def test_results_survive_between_calls(only, run, record_on_disk):
     assert stored["result"] == {"busiest": 12.5}
 
 
-# --- staleness ----------------------------------------------------------------
-
 def test_adding_an_analyzer_invalidates_every_aggregate(only, run, record_on_disk):
     """A summary written before `people` ran describes a recording it could not
     see people in. Serving it afterwards is a confidently outdated answer."""
@@ -144,8 +140,6 @@ def test_the_analyzer_set_is_recorded_alongside_the_aggregates(only, run, record
     assert stored_record(record_on_disk["video_id"])["aggregates_analyzers"] == \
         ["default_video", "people"]
 
-
-# --- dependencies and failure -------------------------------------------------
 
 def test_an_aggregator_whose_analyzer_is_missing_is_skipped(only, run):
     registry = only(
@@ -224,8 +218,6 @@ def test_an_aggregator_returning_nothing_is_not_recorded_as_ran(only, run):
     assert result["ran"] == []
     assert result["aggregates"] == []
 
-
-# --- reads --------------------------------------------------------------------
 
 def test_requesting_an_aggregate_the_recording_lacks_says_what_it_has(record_on_disk):
     with pytest.raises(ValueError, match="has no 'summary' aggregate"):

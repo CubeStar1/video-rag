@@ -3,9 +3,6 @@ import numpy as np
 from .. import audio_extract
 from ..boundaries import diarization, scenes, semantic, vad
 
-# Relative importance of each signal per chunking preset. Each preset's
-# weights sum to 1.0; "audio" leans on pyannote/VAD, "video" leans on
-# PySceneDetect/CLIP, "audio_video" treats all four equally.
 WEIGHTS = {
     "audio": {"speaker": 0.35, "silence": 0.35, "cut": 0.15, "semantic": 0.15},
     "video": {"speaker": 0.15, "silence": 0.15, "cut": 0.35, "semantic": 0.35},
@@ -59,15 +56,6 @@ def fuse(
     picked greedily, strongest first, enforcing `min_gap` between accepted
     boundaries so we don't produce back-to-back tiny chunks.
     """
-    # Renormalise over the signals that actually fired. Not every video
-    # offers every signal - unbroken CCTV has no hard cuts, silent footage
-    # has no speaker turns - and against a fixed threshold the surviving
-    # signals would otherwise inherit whatever absolute weight the preset
-    # happened to give them. That turns the preset into a granularity dial:
-    # on single-signal footage "audio" and "video" produced 12 vs 63
-    # boundaries from identical content. Renormalised, a preset only
-    # expresses which signals matter, and collapses to the same result when
-    # the distinguishing ones are absent.
     active = {source for source, source_events in events.items() if source_events}
     total = sum(weights.get(source, 0.0) for source in active)
     if total > 0:

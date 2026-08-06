@@ -6,7 +6,6 @@ from ...paths import MODEL_DIR, ensure as ensure_dirs
 _model = None
 _model_name = None
 
-# (x1, y1, x2, y2), label, confidence
 Detection = tuple[tuple[int, int, int, int], str, float]
 
 
@@ -112,8 +111,6 @@ def track_ids(
                 unclaimed.pop(best_id)
             current[best_id] = box
         tracked.append(current)
-        # Carry forward subjects missing from this frame so a brief occlusion
-        # does not split one person into two ids.
         previous = {**previous, **current}
 
     return tracked

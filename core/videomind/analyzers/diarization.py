@@ -38,11 +38,6 @@ class DiarizationAnalyzer:
     def analyze(self, chunks: Chunks, ctx: VideoContext) -> list[dict]:
         waveform, sample_rate = ctx.audio()
 
-        # Diarize the whole track once, not per chunk: speaker labels are only
-        # consistent across the video if they come from a single pass, and
-        # a chunk-local pass would call the same person SPEAKER_00 in one chunk
-        # and SPEAKER_01 in the next. Memoised so another speaker-aware
-        # analyzer can reuse it.
         annotation = ctx.memo("diarization", lambda: pyannote.diarize(waveform, sample_rate))
         turns = _speaker_turns(annotation)
 
@@ -60,7 +55,6 @@ class DiarizationAnalyzer:
                 results.append(None)
                 continue
 
-            # Merge consecutive segments from the same speaker into one turn.
             merged: list[dict] = []
             for seg_start, seg_end, text in segments:
                 speaker = _assign_speaker(seg_start, seg_end, turns) or "UNKNOWN"
@@ -87,8 +81,5 @@ class DiarizationAnalyzer:
     def render_fields(self, output: dict) -> dict[str, str]:
         if not output:
             return {}
-        # Embed the speech without the "SPEAKER_00:" prefixes. The labels are
-        # for display and filtering; inside the vector they are just repeated
-        # tokens carrying no meaning, diluting the words that do.
         plain = (output.get("plain") or "").strip()
         return {"combined": plain} if plain else {}

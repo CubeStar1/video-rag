@@ -12,8 +12,6 @@ from videomind.vectordb.store import config_key, point_id
 VIDEO = "abc123def4567890"
 
 
-# --- point_id (AT-13, AT-14) --------------------------------------------------
-
 def test_the_same_chunk_yields_the_same_id():
     """Re-ingesting upserts in place. If this varied, a second run would double
     every vector in the collection."""
@@ -65,8 +63,6 @@ def test_sub_millisecond_differences_collapse():
     assert point_id(VIDEO, "default_video", 0.0, 10.0001, "c") == \
            point_id(VIDEO, "default_video", 0.0, 10.0002, "c")
 
-
-# --- config_key (AT-14) -------------------------------------------------------
 
 def test_preset_and_bounds_are_both_in_the_key():
     assert config_key("audio_video", 5, 20) == "audio_video:5-20"

@@ -22,7 +22,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-# --- must precede any videomind import ---------------------------------------
 _TEST_DATA = Path(tempfile.mkdtemp(prefix="videomind-tests-"))
 os.environ["VIDEOMIND_DATA"] = str(_TEST_DATA)
 os.environ["VIDEOMIND_RECORDS"] = str(_TEST_DATA / "records")
@@ -30,7 +29,6 @@ os.environ["VIDEOMIND_VECTORDB"] = str(_TEST_DATA / "vectordb")
 os.environ["VIDEOMIND_UPLOADS"] = str(_TEST_DATA / "uploads")
 os.environ["VIDEOMIND_CACHE"] = str(_TEST_DATA / "cache")
 os.environ["VIDEOMIND_MODELS"] = str(_TEST_DATA / "models")
-# The UI mounts a router and reads static files; the API is what is under test.
 os.environ["VIDEOMIND_UI"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,7 +36,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
-# --- a stand-in for the sentence-transformers embedder ------------------------
 
 EMBED_DIM = 64
 
@@ -57,7 +54,6 @@ def _embed(text: str) -> np.ndarray:
         vector[index] += 1.0
     norm = float(np.linalg.norm(vector))
     if norm == 0.0:
-        # Qdrant rejects a zero vector under cosine distance.
         vector[0] = 1.0
         return vector
     return vector / norm
@@ -103,8 +99,6 @@ def chunk_store(tmp_path, embedder, monkeypatch):
     finally:
         store.close()
 
-
-# --- record fixtures ----------------------------------------------------------
 
 def make_chunk(chunk_id: int, start: float, end: float, **outputs) -> dict:
     return {"id": chunk_id, "start": start, "end": end, **outputs}
@@ -157,7 +151,6 @@ def sample_record(tmp_path):
                 people={
                     "people": ["a man in a red jacket"],
                     "people_count": 1,
-                    # Per-frame box geometry: internal, and dropped unless verbose.
                     "locations": [{"box_id": 1, "xyxy": [0, 0, 10, 10]}],
                     "_debug": "should never be returned",
                 },

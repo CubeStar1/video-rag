@@ -1,23 +1,7 @@
-"""A single still frame per video, for clients that list videos.
-
-The pipeline never needed this - analyzers sample their own frames - but a UI
-showing twenty videos in a grid does, and the alternative is twenty browsers
-each range-requesting an mp4 to decode one frame. One JPEG written once at
-ingest is cheaper than that by every measure.
-
-Deliberately not an analyzer: it produces no text, embeds nothing, and must run
-even when the analyzer list is empty.
-"""
-
 import cv2
 
-# Far enough in to miss the fade-from-black most edited footage opens on, early
-# enough to still be representative. A fraction rather than a fixed offset so a
-# 20-second clip and a 40-minute recording both land somewhere sensible.
 POSTER_AT = 0.1
 
-# The grid renders these at ~210px wide; 640 covers a 2x display and keeps the
-# object well under 100 KB.
 MAX_WIDTH = 640
 
 JPEG_QUALITY = 82
@@ -62,8 +46,6 @@ def poster_bytes(video_path: str, at: float | None = None) -> bytes | None:
 
         ok, frame = cap.read()
         if not ok or frame is None:
-            # Seeking past the end of a short or truncated file lands nowhere;
-            # the first frame is always there.
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             ok, frame = cap.read()
             if not ok or frame is None:

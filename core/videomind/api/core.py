@@ -57,21 +57,17 @@ def upload(
     cost: the scene analyzer bills per chunk, transcription is free.
     """
     analyzer_ids = analyzer_ids or ["default_video"]
-    analyzers.validate_selection(analyzer_ids)  # fail fast before doing any work
+    analyzers.validate_selection(analyzer_ids)
 
     def report(stage, **info):
         if progress:
             progress(stage, info)
 
-    # Before chunking: a slow download of a large video is the one stage that
-    # can run for minutes with nothing to show for it.
     report("fetching")
     media = resolve_source(source)
     video_id, video_path = media["video_id"], media["local_path"]
     cfg = config_key(preset, min_duration, max_duration, weights=weights, interval=interval)
 
-    # Before chunking, so a client polling the job can render the video as soon
-    # as it is decodable rather than waiting minutes for analysis to finish.
     duration = poster.duration_of(video_path)
     poster_url = _write_poster(video_id, video_path)
 
@@ -90,16 +86,11 @@ def upload(
     cs = chunk_store or ChunkStore()
     owns_store = chunk_store is None
 
-    # Reuse the existing record when re-running against the same chunking, so
-    # analyzers run earlier keep their output instead of being overwritten by
-    # whichever set this upload happened to request.
     existing_path = record_path_for(video_id)
     existing = json.loads(existing_path.read_text(encoding="utf-8")) if existing_path else None
     if existing and existing.get("chunk_config") == cfg:
         record = existing
         record["analyzers"] = sorted(set(record.get("analyzers", [])) | set(analyzer_ids))
-        # The same bytes can arrive under a different name or from a different
-        # URL; the object that is actually current wins.
         record.update(
             video_url=media["video_url"],
             storage_path=media["storage_path"],
@@ -112,8 +103,6 @@ def upload(
             min_duration=min_duration, max_duration=max_duration,
         )
         record["analyzers"] = list(analyzer_ids)
-        # Chunk boundaries changed, so the old chunking's vectors no longer
-        # describe anything that exists - drop all of them for this video.
         if existing:
             cs.delete_video(video_id)
     record["chunk_config"] = cfg
@@ -126,8 +115,6 @@ def upload(
         for analyzer_id in analyzer_ids:
             analyzer = analyzers.get(analyzer_id)
             report("analyzing", analyzer=analyzer_id)
-            # Scoped to this analyzer: a broader delete would take out every
-            # other analyzer's vectors for the same video.
             cs.delete_video(video_id, chunk_config=cfg, extractor_id=analyzer_id)
             outputs = analyzer.analyze(chunks, ctx)
 
@@ -154,9 +141,6 @@ def upload(
         if owns_store:
             cs.close()
 
-    # Named for readability - a bare content hash is useless when you are
-    # grepping records to see what an upload produced. The id stays in the
-    # filename so two videos with the same name cannot collide.
     ensure_dirs()
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(media["filename"]).stem)[:48].strip("_")
     for stale in RECORDS_DIR.glob(f"*__{video_id[:8]}.json"):
@@ -177,8 +161,6 @@ def upload(
         "indexed": indexed,
     }
 
-    # Aggregators read the record just written, so they run as a final stage
-    # rather than needing the video again.
     if aggregate:
         try:
             result["aggregated"] = run_aggregators(video_id, progress=progress)
@@ -306,9 +288,6 @@ def _timecode(seconds: float) -> str:
     return f"{int(seconds // 60)}:{seconds % 60:05.2f}"
 
 
-# Bulky or internal keys, dropped unless explicitly asked for. `locations` is
-# per-frame box geometry that only the entity-linking pass needs, and an LLM
-# reading chunk output gains nothing from a wall of pixel coordinates.
 _INTERNAL_KEYS = ("locations",)
 
 
@@ -347,16 +326,12 @@ def _shape(hit: dict, detail: str) -> dict:
         "score": round(hit["score"], 4),
     }
     if detail == "minimal":
-        # Enough to decide what is worth fetching in full, and nothing more.
         text = (hit.get("description") or hit.get("text") or "").strip()
         base["snippet"] = text[:SNIPPET_CHARS] + ("..." if len(text) > SNIPPET_CHARS else "")
         return base
 
     base.update({
         "video_url": hit.get("video_url"),
-        # `text` is the whole flattened record that was embedded - the UI
-        # renders `description`, so carrying both doubles the response for
-        # nothing. It returns at detail="full".
         "description": hit.get("description", ""),
         "people": hit.get("people", []),
         "objects": hit.get("objects", []),
@@ -367,8 +342,6 @@ def _shape(hit: dict, detail: str) -> dict:
         "turns": hit.get("turns", []),
     })
     if detail == "full":
-        # The heavy nested records: every person's full description, every
-        # detected object, every read string. Nothing renders these in the UI.
         base.update({
             "text": hit["text"],
             "persons": hit.get("persons", []),
@@ -404,10 +377,6 @@ def run_aggregators(
     order = aggregators.resolve_order(requested, analyzers_now)
     skipped = sorted(set(requested) - set(order))
 
-    # Aggregates summarise whatever analyzers existed when they ran. Adding an
-    # analyzer later makes them stale - a summary written before `people` ran
-    # describes a video it could not see people in - so the whole set is
-    # recomputed rather than serving a confidently outdated answer.
     stale = record.get("aggregates_analyzers") != analyzers_now
     force = force or stale
 
@@ -429,7 +398,6 @@ def run_aggregators(
             try:
                 result = aggregators.get(aggregator_id).aggregate(ctx)
             except Exception as exc:
-                # One aggregator failing must not lose the others' work.
                 failed[aggregator_id] = f"{type(exc).__name__}: {exc}"
                 continue
             if result is not None:
@@ -446,8 +414,8 @@ def run_aggregators(
     return {
         "video_id": video_id,
         "ran": list(produced),
-        "reused": reused,            # already stored; pass force=True to recompute
-        "skipped": skipped,          # dependencies this video cannot satisfy
+        "reused": reused,
+        "skipped": skipped,
         "failed": failed,
         "aggregates": list(ctx.results),
         "recomputed_because_analyzers_changed": stale,
@@ -492,9 +460,6 @@ def get_video(video_id: str) -> dict | None:
         "analyzers": record.get("analyzers", []),
         "aggregates": sorted(record.get("aggregates", {})),
         "chunks": len(chunks),
-        # The container's own duration when ingest recorded it; the last chunk's
-        # end is the fallback for records written before posters existed, and is
-        # only the same number when chunking covered the whole video.
         "duration": record.get("duration")
         or (round(chunks[-1]["end"], 2) if chunks else 0.0),
     }
@@ -524,8 +489,6 @@ def get_chunks(
     if analyzer_id and analyzer_id not in available:
         raise ValueError(f"Video has no {analyzer_id!r} output; it has {available}")
 
-    # Batch fetch: an agent holding chunk ids from a search gets them all in
-    # one call instead of one round trip each.
     wanted_ids = set(chunk_ids) if chunk_ids else None
 
     selected = []
@@ -539,7 +502,7 @@ def get_chunks(
         wanted = [analyzer_id] if analyzer_id else available
         outputs = {a: _strip(chunk[a], verbose) for a in wanted if chunk.get(a)}
         if analyzer_id and not outputs:
-            continue  # nothing from that analyzer for this chunk
+            continue
         selected.append({
             "chunk_id": chunk["id"],
             "start": chunk["start"],
@@ -605,12 +568,10 @@ def query(
     added there is reachable here immediately. Unknown keys raise rather than
     being ignored - a dropped filter returns plausible but wrong results.
     """
-    analyzers.get(analyzer_id)  # validate
+    analyzers.get(analyzer_id)
     if detail not in DETAIL_LEVELS:
         raise ValueError(f"Unknown detail {detail!r}; expected one of {list(DETAIL_LEVELS)}")
 
-    # `video_ids` and `analyzer` stay first-class because every caller uses
-    # them; they simply join the filter dict on the way down.
     active = dict(filters or {})
     if video_ids:
         active["video_ids"] = video_ids
@@ -730,8 +691,6 @@ Segments:
 def _synthesize(question: str, results: list[dict], model: str | None = None) -> str:
     from ..extractors.video.openai_call import DEFAULT_MODEL, _get_client
 
-    # Whichever body the detail level carried: `text` only appears at
-    # detail="full", `snippet` only at "minimal", `description` in between.
     segments = "\n\n".join(
         f"[{r['video_id']} {r['start']:.2f}-{r['end']:.2f}s] (score {r['score']})\n"
         f"{r.get('text') or r.get('description') or r.get('snippet') or ''}"

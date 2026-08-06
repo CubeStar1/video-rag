@@ -1,25 +1,3 @@
-"""Video bytes live in Supabase Storage; the pipeline works on local files.
-
-This is the only module that knows both. Everything above it - the API, the
-record, the vector payload - speaks URLs, so a caller never sees a path on this
-machine. Everything below it - chunking, the analyzers, PyAV, OpenCV - is handed
-a local path and does not know Storage exists.
-
-Two doors in (`fetch_source` for a URL, `put_local` for a file already on disk)
-and one door back out (`local_path_for`). Both doors produce the same dict, so
-the ingest path does not branch on where a video came from.
-
-**Decode needs a real file.** `frames.py` seeks once per chunk then walks
-forward with `grab()`/`retrieve()`, and every analyzer re-opens the video; the
-seek penalty measured at ~22x is a local-disk number. Streaming the same access
-pattern over HTTPS would pay it to the network instead. So a video is downloaded
-once into a content-hash-keyed cache and every pass runs against that path.
-
-`video_id` is the sha1 of the bytes, which is why the download has to finish
-before the object's own name exists. Re-ingesting the same bytes therefore lands
-on the same id, the same object, and skips the upload.
-"""
-
 import hashlib
 import mimetypes
 import os
@@ -39,22 +17,12 @@ load_dotenv()
 
 BUCKET = os.environ.get("VIDEOMIND_BUCKET", "videos")
 
-# A cap, not a quota: an unbounded server-side fetch of a caller-supplied URL is
-# how a disk fills up. Counted as the bytes land, because Content-Length is
-# advisory and absent on chunked responses.
 MAX_BYTES = int(os.environ.get("VIDEOMIND_MAX_BYTES", 4 * 1024**3))
 
-# Generous: a large video over a slow link is normal, and ingest already runs on
-# a background thread where nothing is waiting on the connection.
 TIMEOUT = httpx.Timeout(30.0, read=300.0)
 
 ALLOWED_SCHEMES = {"http", "https"}
 
-# Servers serve video under all three. `application/octet-stream` is what most
-# object stores return for an mp4 with no explicit type set, and an empty type
-# is what several CDNs send; refusing those would reject more real videos than
-# it would catch mistakes. The check is here to fail on an HTML error page
-# saved as a .mp4, not to be an authorisation boundary.
 ACCEPTED_TYPES = ("video/", "application/octet-stream", "application/mp4", "binary/octet-stream")
 
 
@@ -113,8 +81,6 @@ def _suffix_for(filename: str, content_type: str) -> str:
     suffix = Path(filename).suffix
     if suffix:
         return suffix
-    # A URL that ends in a route rather than a file - `/download/abc123` - still
-    # has to become something OpenCV will open by extension.
     return mimetypes.guess_extension(content_type or "") or ".mp4"
 
 
@@ -124,7 +90,6 @@ def _exists(storage_path: str) -> bool:
     try:
         return any(entry.get("name") == name for entry in _bucket().list(folder))
     except Exception:
-        # A listing failure is not evidence of absence; let the upload decide.
         return False
 
 
@@ -163,7 +128,7 @@ def _result(video_id: str, local_path: Path, storage_path: str, filename: str,
             source_url: str | None, size_bytes: int) -> dict:
     return {
         "video_id": video_id,
-        "local_path": str(local_path),   # internal only; never leaves the process
+        "local_path": str(local_path),
         "storage_path": storage_path,
         "video_url": public_url(storage_path),
         "filename": filename,
@@ -188,9 +153,6 @@ def fetch_source(url: str) -> dict:
     filename = _filename_from_url(url)
     digest, size = hashlib.sha1(), 0
 
-    # Downloaded under a dot-prefixed temporary name so a failed or half-written
-    # fetch can never be mistaken for a cache hit - the cache is keyed by a hash
-    # of the whole file, which does not exist until the whole file does.
     handle, tmp_name = tempfile.mkstemp(dir=CACHE_DIR, prefix=".download-")
     os.close(handle)
     tmp = Path(tmp_name)
@@ -223,7 +185,7 @@ def fetch_source(url: str) -> dict:
         suffix = _suffix_for(filename, content_type)
         local = CACHE_DIR / f"{video_id}{suffix}"
         if local.exists():
-            tmp.unlink()          # same bytes already cached
+            tmp.unlink()
         else:
             tmp.replace(local)
     except httpx.HTTPError as exc:

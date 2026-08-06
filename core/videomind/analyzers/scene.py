@@ -63,8 +63,6 @@ class SceneAnalyzer:
             (embeddings[i - 1] @ embeddings[i].T).item() for i in range(1, len(embeddings))
         ]
         adaptive = float(np.percentile(consecutive, self.percentile)) if consecutive else 1.0
-        # Cap the adaptive threshold: on a static chunk the percentile lands on
-        # the median (~0.999) and "distinct" frames get mined out of noise.
         threshold = min(adaptive, self.max_similarity)
 
         kept = [0]
@@ -77,8 +75,6 @@ class SceneAnalyzer:
             picks = np.linspace(0, len(candidates) - 1, target).round().astype(int)
             kept = sorted(set(kept) | set(picks.tolist()))
 
-        # Thin against evenly spaced points in time, not positions in the kept
-        # list, so a near-duplicate pair cannot survive beside a long gap.
         if len(kept) > self.max_frames:
             targets = np.linspace(timestamps[kept[0]], timestamps[kept[-1]], self.max_frames)
             chosen = []
@@ -91,8 +87,6 @@ class SceneAnalyzer:
         return [timestamps[i] for i in kept], [candidates[i] for i in kept]
 
     def analyze(self, chunks: Chunks, ctx: VideoContext) -> list[dict]:
-        # Sampling is serial (shared CLIP model on one GPU); the API calls are
-        # I/O bound so they run concurrently.
         samples = [self._sample(start, end, ctx) for start, end in chunks]
 
         def describe(i):
@@ -103,8 +97,6 @@ class SceneAnalyzer:
                 output = openai_call.describe(PROMPT, frames, model=self.model)
             except Exception as exc:
                 output = {"description": f"ERROR: {type(exc).__name__}: {exc}"}
-            # Underscore-prefixed: kept in the saved record for debugging, but
-            # ignored by render_fields and never copied into the vector payload.
             output["_frames"] = [round(t, 2) for t in frame_times]
             return i, output
 
@@ -128,8 +120,6 @@ class SceneAnalyzer:
         fields = {"combined": "\n".join(p for p in parts if p).strip()}
         if description := output.get("description", "").strip():
             fields["description"] = description
-        # people/actions read as full clauses so they embed well alone;
-        # tags and setting stay filter-only, too repetitive to carry signal.
         if people := output.get("people"):
             fields["people"] = "; ".join(people)
         if actions := output.get("actions"):
