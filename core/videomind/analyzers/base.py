@@ -2,7 +2,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from .. import audio_extract
+from .. import audio_extract, poster
 from ..extractors.video import frames as frame_reader
 
 Chunks = list[tuple[float, float]]
@@ -48,6 +48,10 @@ class VideoContext:
         return self._frames[key]
 
     def duration(self) -> float:
+        """From the container, so a video with no audio track still has a length."""
+        duration = poster.duration_of(self.video_path)
+        if duration > 0:
+            return duration
         waveform, sample_rate = self.audio()
         return len(waveform) / sample_rate
 

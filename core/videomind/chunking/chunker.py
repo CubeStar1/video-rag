@@ -1,6 +1,6 @@
 import numpy as np
 
-from .. import audio_extract
+from .. import audio_extract, poster
 from ..boundaries import diarization, scenes, semantic, vad
 
 WEIGHTS = {
@@ -14,15 +14,28 @@ Chunks = list[tuple[float, float]]
 
 
 def collect_boundaries(video_path: str) -> tuple[BoundaryEvents, float]:
-    """Run all 4 detectors once and return their raw (time, strength) events."""
+    """Run all 4 detectors once and return their raw (time, strength) events.
+
+    Duration comes from the container, not from the waveform: a video may have
+    no audio track, and even when it has one the two lengths rarely match
+    exactly. On such a video the audio detectors are skipped rather than run on
+    silence - `vad.silence_boundaries` on no speech reports one boundary at the
+    midpoint of the whole clip, which is a fabricated signal, and `fuse`
+    renormalises over the detectors that fired anyway.
+    """
     waveform, sample_rate = audio_extract.extract_audio(video_path)
-    duration = len(waveform) / sample_rate
+    duration = poster.duration_of(video_path) or len(waveform) / sample_rate
+    if duration <= 0:
+        raise ValueError(f"Could not determine a duration for {video_path}")
 
-    annotation = diarization.diarize(waveform, sample_rate)
-    speaker_events = diarization.speaker_change_boundaries(annotation)
+    speaker_events: list[tuple[float, float]] = []
+    silence_events: list[tuple[float, float]] = []
+    if waveform.size:
+        annotation = diarization.diarize(waveform, sample_rate)
+        speaker_events = diarization.speaker_change_boundaries(annotation)
 
-    speech_segments = vad.detect_speech(waveform, sample_rate)
-    silence_events = vad.silence_boundaries(speech_segments, duration)
+        speech_segments = vad.detect_speech(waveform, sample_rate)
+        silence_events = vad.silence_boundaries(speech_segments, duration)
 
     scene_list = scenes.detect_cuts(video_path)
     cut_events = scenes.cut_boundaries(scene_list)

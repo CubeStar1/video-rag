@@ -73,7 +73,10 @@ def transcribe_segments(
 
 
 def detect_language(waveform: np.ndarray, sample_rate: int, model_size: str = "tiny") -> str | None:
-    """Detect the language once over the whole audio."""
+    """Detect the language once over the whole audio, or None if there is none."""
+    if waveform.size == 0:
+        return None
+
     model = _get_model(model_size)
     _segments, info = model.transcribe(waveform, beam_size=1, vad_filter=True)
     return info.language

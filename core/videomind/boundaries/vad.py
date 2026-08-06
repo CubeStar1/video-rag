@@ -14,6 +14,9 @@ def _get_model():
 
 def detect_speech(waveform: np.ndarray, sample_rate: int) -> list[dict]:
     """Return speech segments as a list of {"start": s, "end": s} dicts, in seconds."""
+    if len(waveform) == 0:
+        return []
+
     wav = torch.from_numpy(waveform) if isinstance(waveform, np.ndarray) else waveform
     model = _get_model()
     return get_speech_timestamps(wav, model, sampling_rate=sample_rate, return_seconds=True)
