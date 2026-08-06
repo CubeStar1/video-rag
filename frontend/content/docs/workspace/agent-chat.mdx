@@ -126,8 +126,10 @@ with explicit ids.
 
 ## Models
 
-The model picker sits above the input. Providers are OpenAI, Google, Groq and Cerebras; the list
-lives in `app/agent/lib/ai/models.ts` and any model whose provider key is set can be selected.
+The model picker sits above the input. Providers are OpenAI, Google, Groq, Cerebras and LM Studio;
+the list lives in `app/agent/lib/ai/models.ts` and any model whose provider key is set can be
+selected. LM Studio needs no key — it talks to a local server at `LMSTUDIO_BASE_URL`, so its
+models only work while that server is running with the model loaded.
 
 ## Tagging videos
 
