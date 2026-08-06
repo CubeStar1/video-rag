@@ -13,6 +13,9 @@
 /.next/
 /out/
 
+# fumadocs-mdx generated collections
+/.source/
+
 # production
 /build
 
@@ -39,3 +42,4 @@ next-env.d.ts
 .vscode
 certificates
 uploads/
+
