@@ -49,6 +49,12 @@ export type ArtifactDisplayType = 'document' | 'code' | 'markdown' | 'custom'
 
 export interface ArtifactState {
   isOpen: boolean
+  /**
+   * The conversation this artifact was opened from. The store is global and the
+   * panel is not, so an artifact is only shown while its own conversation is on
+   * screen — otherwise the last one opened follows the user into the next chat.
+   */
+  conversationId?: string
   title?: string
   displayType: ArtifactDisplayType
   content?: string
@@ -62,7 +68,7 @@ export interface StudioState {
   isOpen: boolean
   /** Supabase `videos.id` of the video loaded in the persistent player. */
   activeVideoId?: string
-  seekRequest?: { seconds: number; videodbVideoId?: string; nonce: number }
+  seekRequest?: { seconds: number; coreVideoId?: string; nonce: number }
 }
 
 

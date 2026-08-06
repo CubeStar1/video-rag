@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { AgentSidebarHistory } from "./sidebar-history";
 import { SidebarUserNav } from "@/app/agent/components/sidebar/sidebar-user-nav";
-import { useAgentStore } from "@/app/agent/store/agent-store";
 import Image from "next/image";
 
 import {
@@ -32,7 +31,6 @@ interface AgentSidebarProps {
 
 export function AgentSidebar({ user }: AgentSidebarProps) {
   const { setOpenMobile } = useSidebar();
-  const handleArtifactClose = useAgentStore((state) => state.handleArtifactClose);
   const appName = process.env.NEXT_PUBLIC_APP_NAME!;
   const appIcon = process.env.NEXT_PUBLIC_APP_ICON!;
 
@@ -48,10 +46,7 @@ export function AgentSidebar({ user }: AgentSidebarProps) {
             >
               <Link
                 href="/"
-                onClick={() => {
-                  handleArtifactClose();
-                  setOpenMobile(false);
-                }}
+                onClick={() => setOpenMobile(false)}
               >
                 <Image
                   src={appIcon}

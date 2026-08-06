@@ -7,8 +7,19 @@ def extract_audio(video_path: str, sample_rate: int = 16000) -> tuple[np.ndarray
 
     Uses PyAV, which bundles its own FFmpeg libs, so no system FFmpeg
     install (and no torchcodec) is required.
+
+    A video with no audio track at all is ordinary input - CCTV exports,
+    screen captures, anything muxed with `-an` - so this returns an empty
+    waveform rather than raising. Callers must therefore not take duration
+    from its length (use `poster.duration_of`) and should skip the audio
+    detectors instead of feeding them silence, which reads as one video-long
+    silence gap.
     """
     container = av.open(video_path)
+    if not container.streams.audio:
+        container.close()
+        return np.zeros(0, dtype=np.float32), sample_rate
+
     stream = container.streams.audio[0]
     resampler = av.AudioResampler(format="fltp", layout="mono", rate=sample_rate)
 

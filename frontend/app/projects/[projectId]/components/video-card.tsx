@@ -1,13 +1,16 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   AlertTriangle,
   CheckCircle2,
   Film,
   Loader2,
   MoreHorizontal,
+  PlayCircle,
   RefreshCw,
+  ScrollText,
   Trash2,
 } from 'lucide-react'
 import {
@@ -17,12 +20,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { formatDuration } from '@/lib/videodb/format'
-import { describeSegmentation } from '@/lib/videodb/segmentation'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import { formatDuration } from '@/lib/core/format'
+import { describeChunking } from '@/lib/core/chunking'
+import type { ProjectVideo } from '@/lib/core/types'
 
 interface VideoCardProps {
   video: ProjectVideo
+  projectId: string
   onDelete: (videoId: string) => void
   onReindex: (videoId: string) => void
   onPreview: (video: ProjectVideo) => void
@@ -50,12 +54,24 @@ function StatusPill({ video }: { video: ProjectVideo }) {
     )
   }
 
+  // Core reports which pipeline stage it is on; that is more informative than a
+  // generic spinner on a job that runs for minutes.
+  const STAGE_LABELS: Record<string, string> = {
+    fetching: 'Downloading',
+    chunking: 'Splitting',
+    chunked: 'Splitting',
+    analyzing: 'Analysing',
+    indexing: 'Indexing',
+    aggregating: 'Summarising',
+    complete: 'Finishing',
+  }
+
   const label =
-    video.status === 'pending'
-      ? 'Queued'
-      : video.status === 'ingesting'
-        ? 'Uploading'
-        : video.index_status?.message || 'Indexing'
+    video.status === 'pending' || video.status === 'uploading'
+      ? 'Uploading'
+      : video.status === 'queued'
+        ? 'Queued'
+        : (video.stage && STAGE_LABELS[video.stage]) || 'Analysing'
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
@@ -65,27 +81,37 @@ function StatusPill({ video }: { video: ProjectVideo }) {
   )
 }
 
-export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardProps) {
+export function VideoCard({
+  video,
+  projectId,
+  onDelete,
+  onReindex,
+  onPreview,
+}: VideoCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const isReady = video.status === 'ready'
-  // Absent on rows ingested before segmentation was configurable — show nothing
-  // rather than implying a config we can't vouch for.
-  const segmentation = video.index_config?.segmentation ?? video.index_status?.segmentation
+  // Absent while a video is still queued — show nothing rather than implying a
+  // config we can't vouch for.
+  const chunking = video.ingest_config
+
+  // The card opens the analysis rather than a preview modal: a video's chunks,
+  // transcript and aggregates are the reason it is in the project at all, and
+  // the player is on that page too.
+  const href = `/projects/${projectId}/videos/${video.id}`
 
   return (
     <div className="group flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => onPreview(video)}
+      <Link
+        href={href}
         className={cn(
           'relative aspect-video w-full overflow-hidden rounded-xl border bg-muted transition-all',
           'hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         )}
       >
-        {video.thumbnail_url && !imageFailed ? (
-          // eslint-disable-next-line @next/next/no-img-element -- thumbnails come from arbitrary VideoDB hosts
+        {video.poster_url && !imageFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element -- the poster is written by core into its own bucket
           <img
-            src={video.thumbnail_url}
+            src={video.poster_url}
             alt={video.title}
             className="size-full object-cover"
             onError={() => setImageFailed(true)}
@@ -103,19 +129,23 @@ export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardPr
             {formatDuration(video.duration)}
           </span>
         ) : null}
-      </button>
+      </Link>
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={video.title}>
+          <Link
+            href={href}
+            className="block truncate text-sm font-medium hover:underline"
+            title={video.title}
+          >
             {video.title}
-          </p>
+          </Link>
           <div className="mt-1">
             <StatusPill video={video} />
           </div>
-          {segmentation && (
+          {chunking && (
             <p className="mt-1 truncate text-[11px] text-muted-foreground/70">
-              {describeSegmentation(segmentation)}
+              {describeChunking(chunking)}
             </p>
           )}
         </div>
@@ -125,6 +155,16 @@ export function VideoCard({ video, onDelete, onReindex, onPreview }: VideoCardPr
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild>
+              <Link href={href}>
+                <ScrollText className="size-4" />
+                View analysis
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onPreview(video)}>
+              <PlayCircle className="size-4" />
+              Quick preview
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onReindex(video.id)}>
               <RefreshCw className="size-4" />
               Re-index

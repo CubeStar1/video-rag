@@ -1,7 +1,7 @@
 'use client'
 
 import { UIMessage, isStaticToolUIPart, FileUIPart } from 'ai'
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import {
   Message,
   MessageContent,
@@ -20,6 +20,7 @@ import { toast } from 'sonner'
 import { TelemetryMetadata } from '../types'
 
 import { useAgentStore } from '../store/agent-store'
+import { useConversationId } from '../hooks/use-conversation-id'
 
 interface MessagesProps {
   isLoading: boolean
@@ -28,7 +29,12 @@ interface MessagesProps {
 }
 
 function PureMessages({ isLoading, messages }: MessagesProps) {
-  const onArtifactReopen = useAgentStore((state) => state.handleArtifactReopen)
+  const conversationId = useConversationId()
+  const reopenArtifact = useAgentStore((state) => state.handleArtifactReopen)
+  const onArtifactReopen = useCallback(
+    () => reopenArtifact(conversationId),
+    [reopenArtifact, conversationId]
+  )
   return (
     <>
       {messages.map((message, index) => {

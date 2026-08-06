@@ -1,0 +1,196 @@
+---
+title: Response objects
+description: Every shape the API returns, with field types — a single reference for building typed clients.
+---
+
+import { TypeTable } from 'fumadocs-ui/components/type-table'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+TypeScript definitions for all of these live in `frontend/lib/core/types.ts` and can be copied
+directly.
+
+## Job
+
+<TypeTable
+  type={{
+    job_id: { type: 'string', description: '12-character hex id', required: true },
+    status: { type: "'queued' | 'running' | 'done' | 'failed'", required: true },
+    stage: { type: 'string | null', description: 'fetching, chunking, chunked, analyzing, indexing, aggregating, complete' },
+    detail: { type: 'Record<string, unknown>', description: 'Stage context, e.g. { chunks: 39 }' },
+    result: { type: 'IngestResult | AggregateResult | null', description: 'Populated once status is done' },
+    error: { type: 'string | null', description: '"TypeName: message" when failed' },
+    created_at: { type: 'string', description: 'ISO 8601, UTC, second precision' },
+    updated_at: { type: 'string' },
+  }}
+/>
+
+## IngestResult
+
+<TypeTable
+  type={{
+    video_id: { type: 'string', description: 'sha1(bytes)[:16]', required: true },
+    video_url: { type: 'string', description: 'Public Storage URL of the mp4', required: true },
+    poster_url: { type: 'string | null', description: 'Single extracted frame; null if extraction failed' },
+    storage_path: { type: 'string', description: '{video_id}/{filename} in the bucket' },
+    filename: { type: 'string' },
+    duration: { type: 'number | null', description: 'Seconds, from the container' },
+    size_bytes: { type: 'number | null' },
+    chunk_config: { type: 'string', description: 'e.g. "audio_video:5-20" or "interval:10"' },
+    chunks: { type: 'number', description: 'How many chunks were produced' },
+    analyzers: { type: 'string[]', description: 'Every analyzer with output on this video' },
+    indexed: { type: 'Record<string, number>', description: 'Vectors written per analyzer. Zero is normal for a silent video' },
+    aggregated: { type: '{ ran?, reused?, aggregates?, error? }', description: 'Result of the aggregation stage' },
+  }}
+/>
+
+## Video
+
+<TypeTable
+  type={{
+    video_id: { type: 'string', required: true },
+    filename: { type: 'string' },
+    video_url: { type: 'string' },
+    poster_url: { type: 'string | null' },
+    storage_path: { type: 'string' },
+    source_url: { type: 'string | null', description: 'Where it was ingested from, when it came from a URL' },
+    size_bytes: { type: 'number | null' },
+    preset: { type: 'string | null' },
+    params: { type: 'Record<string, unknown>', description: 'min_duration, max_duration and friends' },
+    chunk_config: { type: 'string | null' },
+    analyzers: { type: 'string[]' },
+    aggregates: { type: 'string[]', description: 'Aggregator ids with stored results' },
+    chunks: { type: 'number' },
+    duration: { type: 'number' },
+  }}
+/>
+
+## SearchResult
+
+Which fields are populated depends on `detail`.
+
+<TypeTable
+  type={{
+    video_id: { type: 'string', required: true },
+    chunk_id: { type: 'number', description: 'Index within its video only', required: true },
+    start: { type: 'number', description: 'Seconds', required: true },
+    end: { type: 'number', description: 'Seconds', required: true },
+    timecode: { type: 'string', description: 'e.g. "1:17.80-1:23.80"', required: true },
+    score: { type: 'number', description: 'Cosine similarity, 0–1', required: true },
+    snippet: { type: 'string', description: 'detail=minimal only — first 180 characters' },
+    video_url: { type: 'string', description: 'detail=standard and above' },
+    description: { type: 'string' },
+    people: { type: 'string[]' },
+    objects: { type: 'string[]' },
+    actions: { type: 'string[]' },
+    tags: { type: 'string[]' },
+    speakers: { type: 'string[]' },
+    people_count: { type: 'number | null' },
+    turns: { type: 'SpeakerTurn[]' },
+    text: { type: 'string', description: 'detail=full only — the text that was embedded' },
+    persons: { type: 'object[]', description: 'detail=full only' },
+    detections: { type: 'object[]', description: 'detail=full only' },
+    texts: { type: '{ text, context? }[]', description: 'detail=full only' },
+  }}
+/>
+
+## SpeakerTurn
+
+<TypeTable
+  type={{
+    speaker: { type: 'string', description: 'e.g. "SPEAKER_00" — consistent within a video, not across videos', required: true },
+    start: { type: 'number', required: true },
+    end: { type: 'number', required: true },
+    text: { type: 'string', required: true },
+  }}
+/>
+
+## Chunk
+
+One chunk with whatever each analyzer produced for it, merged onto the same object.
+
+<TypeTable
+  type={{
+    chunk_id: { type: 'number', required: true },
+    start: { type: 'number', required: true },
+    end: { type: 'number', required: true },
+    timecode: { type: 'string', required: true },
+    default_video: { type: '{ description, setting, people[], objects[], actions[], tags[] }' },
+    transcript: { type: '{ text }' },
+    diarization: { type: '{ turns: SpeakerTurn[], speakers: string[] }' },
+    ocr: { type: '{ texts: { text, context }[], summary }' },
+    people: { type: '{ people: object[], people_count: number }' },
+    object_detection: { type: '{ detections: { object, description, context }[], objects: string[] }' },
+  }}
+/>
+
+<Callout type="info">
+  Only the analyzers that ran appear as keys. Checking `"people" in chunk` is the right way to ask
+  whether that pass produced anything for this moment.
+</Callout>
+
+## ChunksResponse
+
+<TypeTable
+  type={{
+    video_id: { type: 'string', required: true },
+    analyzers: { type: 'string[]', description: 'Every analyzer with output on this video' },
+    total: { type: 'number', description: 'Chunks matching the filters, not the page size' },
+    offset: { type: 'number' },
+    limit: { type: 'number' },
+    chunks: { type: 'Chunk[]' },
+  }}
+/>
+
+## QueryResponse
+
+<TypeTable
+  type={{
+    query: { type: 'string', required: true },
+    analyzer: { type: 'string', required: true },
+    field: { type: 'string', required: true },
+    detail: { type: "'minimal' | 'standard' | 'full'", required: true },
+    answer: { type: 'string | null', description: 'null when synthesize=false or nothing matched' },
+    results: { type: 'SearchResult[]', required: true },
+  }}
+/>
+
+## AskResponse
+
+<TypeTable
+  type={{
+    question: { type: 'string', required: true },
+    answer: { type: 'string | null' },
+    sources: { type: 'Record<string, { routed_to: string[], …counts }>', description: 'What was consulted, per video' },
+    results: { type: 'SearchResult[]', description: 'Supporting segments at detail=standard' },
+    error: { type: 'string', description: 'Present when there was nothing to answer from' },
+  }}
+/>
+
+## Entity
+
+<TypeTable
+  type={{
+    entity_id: { type: 'string', description: 'Stable within one video only', required: true },
+    appearances: { type: 'number', description: 'Chunks this person was seen in', required: true },
+    chunk_ids: { type: 'number[]', required: true },
+    first_seen: { type: 'number', description: 'Seconds', required: true },
+    last_seen: { type: 'number', description: 'Seconds', required: true },
+    description: { type: 'string', description: 'Appearance, as the people analyzer described it' },
+    narrative: { type: 'string', description: 'What they did across the video' },
+    timeline: { type: '{ observed_seconds: number, spans: [number, number][] }', description: 'Present when entity_timelines has run' },
+  }}
+/>
+
+## CapabilitiesResponse
+
+The shape `GET /analyzers` and `GET /schema` combine into, as the reference client exposes it.
+
+<TypeTable
+  type={{
+    analyzers: { type: 'string[]', required: true },
+    fields: { type: 'string[]', description: 'Valid values for `field` on /query' },
+    exclusive_groups: { type: 'string[][]', description: 'Analyzer sets that cannot be selected together' },
+    aggregators: { type: 'Record<string, { depends_on: string[], uses_llm: boolean }>' },
+    filters: { type: 'Record<string, { type: string, matches: string, payload_field: string }>' },
+  }}
+/>

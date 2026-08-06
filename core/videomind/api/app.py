@@ -1,9 +1,6 @@
 import os
 import warnings
 
-# Must precede any transformers import. transformers probes for TensorFlow and
-# imports it if present, which pulls in oneDNN/absl banners and several seconds
-# of startup for a backend nothing here uses.
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
@@ -12,23 +9,35 @@ warnings.filterwarnings("ignore")
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from .. import aggregators, analyzers, storage
+from .. import aggregators, analyzers, storage, youtube
 from ..paths import UPLOAD_DIR, ensure as ensure_dirs
 from ..vectordb.render import VECTOR_FIELDS
 from ..vectordb.store import FILTER_SPEC
 from . import core, jobs, ui
 
 app = FastAPI(
-    title="VideoMind",
+    title="FalconVQA",
     version="0.1.0",
     description="Video RAG: chunk, analyse, aggregate, search and ask.",
 )
 
-# The API is the product; the UI is one optional client of it.
+API_TOKEN = os.environ.get("VIDEOMIND_API_TOKEN", "").strip()
+
+_OPEN_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    if API_TOKEN and request.url.path not in _OPEN_PATHS:
+        if request.headers.get("x-core-token") != API_TOKEN:
+            return JSONResponse({"detail": "Invalid or missing X-Core-Token"}, status_code=401)
+    return await call_next(request)
+
+
 if ui.enabled():
     app.include_router(ui.router)
 
@@ -40,12 +49,22 @@ def health():
     Storage is probed rather than assumed: a bad key or a missing bucket would
     otherwise first surface as a failed ingest, minutes later, on a background
     thread, in a job nobody is watching.
+
+    `youtube.max_quality` is reported for the same reason. Without ffmpeg a
+    YouTube ingest silently arrives at 360p and every analyzer downstream is
+    reading a worse video than the caller thinks they supplied.
     """
     store_status = storage.status()
+    ffmpeg = youtube.ffmpeg_path()
     return {
         "status": "ok" if store_status["ok"] else "degraded",
         "ui": ui.enabled(),
         "storage": store_status,
+        "youtube": {
+            "enabled": youtube.available(),
+            "ffmpeg": ffmpeg,
+            "max_quality": "1080p" if ffmpeg else "360p (install ffmpeg for more)",
+        },
         "analyzers": analyzers.available(),
         "aggregators": aggregators.available(),
     }
@@ -67,8 +86,6 @@ def media(video_id: str):
     url = core.video_url_for(video_id)
     if not url:
         raise HTTPException(404, f"No media for video_id {video_id!r}")
-    # 307, not 302: preserves the method and, unlike 301/308, is not cached, so
-    # a later move to signed URLs cannot be defeated by a stale browser cache.
     return RedirectResponse(url, status_code=307)
 
 
@@ -81,8 +98,6 @@ class QueryRequest(BaseModel):
     score_threshold: float | None = None
     synthesize: bool = True
     detail: str = "standard"
-    # Passed straight through to the store's FILTER_SPEC. Keeping this generic
-    # is what stopped six store filters from being silently unreachable.
     filters: dict = Field(default_factory=dict)
 
 
@@ -91,7 +106,6 @@ def list_analyzers():
     return {
         "analyzers": analyzers.available(),
         "fields": list(VECTOR_FIELDS),
-        # Sets that cannot be selected together, so a UI can enforce it.
         "exclusive_groups": [sorted(g) for g in analyzers.EXCLUSIVE_GROUPS],
     }
 
@@ -143,6 +157,21 @@ def get_video(video_id: str):
     if video is None:
         raise HTTPException(404, f"No such video {video_id!r}")
     return video
+
+
+@app.delete("/videos/{video_id}")
+def delete_video(video_id: str):
+    """Remove a video's vectors, record, bucket objects and cached file.
+
+    Note that `video_id` is a content hash, so two callers who ingested the
+    same bytes are referring to the *same* video here. Whoever owns the
+    application-side rows has to decide that nothing else still points at it
+    before calling this - core has no notion of who else is interested.
+    """
+    result = core.delete_video(video_id)
+    if result is None:
+        raise HTTPException(404, f"No such video {video_id!r}")
+    return result
 
 
 @app.get("/videos/{video_id}/chunks")
@@ -234,7 +263,7 @@ def get_entities(video_id: str, min_appearances: int = Query(1, ge=1)):
         stored = core.get_aggregates(video_id, aggregator_id="entity_timelines")
         timelines = {t["entity_id"]: t for t in stored["result"]["timelines"]}
     except ValueError:
-        pass  # timelines are optional
+        pass
 
     for entity in entities:
         if entity["entity_id"] in timelines:

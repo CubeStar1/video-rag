@@ -17,8 +17,8 @@ export interface HeaderConfig {
 
 export const headerConfig: HeaderConfig = {
   brand: {
-    title: "RPA",
-    icon: "/next.svg"
+    title: "FalconVQA",
+    icon: "/logos/falcon-vqa-logo.png"
   },
   navigationLinks: [
     {
@@ -28,6 +28,10 @@ export const headerConfig: HeaderConfig = {
     {
       href: "/projects",
       label: "Projects"
+    },
+    {
+      href: "/docs",
+      label: "Documentation"
     }
   ]
 }

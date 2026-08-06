@@ -11,10 +11,6 @@ import numpy as np
 
 from ..vectordb import ChunkStore, get_embedder
 
-# What each aggregate is good for, in the words a question would use. These are
-# embedded and compared to the question, so routing degrades gracefully on
-# phrasings nobody anticipated - and a new aggregator joins simply by adding a
-# line here, with no keyword list to maintain.
 ROUTE_HINTS = {
     "entities": "what a particular person did; someone identified by their clothing or "
                 "appearance; the man in the blue shirt; the woman in grey; follow one "
@@ -29,8 +25,6 @@ ROUTE_HINTS = {
                 "what the video is about overall",
     "speaker_stats": "who talked the most; how many speakers there were; speaking time; "
                      "number of turns; interruptions in conversation",
-    # Narrowed to speech: an earlier, vaguer wording ("how someone sounded") made this
-    # out-rank entities for "what did the woman in grey do", which is not about tone.
     "sentiment": "the tone or mood of what was said aloud; whether spoken language was "
                  "positive, negative or neutral; how a speaker's words came across",
     "ner": "named things mentioned: brands, product names, organisations, place names, "
@@ -41,12 +35,6 @@ ROUTE_HINTS = {
                     "by whom; pairs of people sharing a segment",
 }
 
-# Absolute thresholds do not survive contact with real questions: the score
-# distribution shifts per question (means of 0.47 to 0.56 measured here), so one
-# cutoff either lets everything through or nothing. The ranking is reliable
-# though, so selection is relative - how far a hint stands above the average for
-# this question - with a hard cap so an ambiguous question cannot pull in
-# everything.
 ROUTE_Z = 1.0
 ROUTE_MAX = 3
 MAX_SECTIONS = 4
@@ -90,8 +78,6 @@ def route(question: str, available: list[str],
     cutoff = float(scores.mean()) + z * spread
     ranked = sorted(zip(candidates, scores), key=lambda p: -p[1])
     chosen = [a for a, s in ranked if s >= cutoff][:cap]
-    # Nothing stood out - the question is broad, so answer from the strongest
-    # match rather than from nothing.
     if not chosen and ranked:
         chosen = [ranked[0][0]]
     return chosen

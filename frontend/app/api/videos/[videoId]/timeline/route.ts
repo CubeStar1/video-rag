@@ -1,136 +1,123 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
-import { videodb } from '@/lib/videodb/backend-client'
-import { INDEX } from '@/lib/videodb/indexes'
-import type { SceneSegment, Shot, TranscriptSegment, VideoTimeline } from '@/lib/videodb/types'
+import { core } from '@/lib/core/client'
+import type {
+  Chapter,
+  ChunkOut,
+  SceneSegment,
+  TranscriptSegment,
+  VideoEvent,
+  VideoTimeline,
+} from '@/lib/core/types'
 
 type Params = Promise<{ videoId: string }>
 
 export const maxDuration = 60
 
-const SCENE_LIMIT = 300
+/** Core paginates chunks; a long video's timeline still wants all of them. */
+const CHUNK_LIMIT = 500
 
-/**
- * A queried shot carries its index rows under `metadata.indexes.<name>`, but the
- * shape varies by index version — fall back to the metadata bag itself.
- */
-function indexRow(
-  metadata: Record<string, unknown> | null | undefined,
-  name: string
-): Record<string, any> {
-  if (!metadata || typeof metadata !== 'object') return {}
-
-  const indexes = (metadata as any).indexes
-  if (indexes && typeof indexes === 'object') {
-    const rows = indexes[name] ?? Object.values(indexes)[0]
-    const row = Array.isArray(rows) ? rows[0] : rows
-    if (row && typeof row === 'object') return row
-  }
-
-  return metadata as Record<string, any>
-}
-
-/** Every analyzer in a run shares one segmentation, so timestamps line rows up. */
-const timeKey = (shot: Shot) => `${Number(shot.start) || 0}-${Number(shot.end) || 0}`
-
-function label(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  const text = String(value).trim()
-  return text && text !== 'unknown' ? text : null
-}
-
-/** A tag is a short label, not prose — the analyzers sometimes return a sentence. */
 const TAG_MAX_LENGTH = 40
 
-/**
- * Pull short labels out of a row, from whichever of `keys` it actually carries.
- * The task-specific analyzers vary in whether a signal arrives as a string
- * (`activity`), a string array (`labels`), or an array of objects (`actions`), so
- * every shape is flattened and anything sentence-length is dropped.
- */
-function tagsFrom(row: Record<string, any>, keys: string[]): string[] {
+/** A tag is a short label, not prose — drop anything sentence-length. */
+function shortLabels(...groups: (string[] | string | undefined)[]): string[] {
   const tags: string[] = []
-
-  const add = (value: unknown) => {
-    if (Array.isArray(value)) return value.forEach(add)
-    const text = label(
-      value && typeof value === 'object' ? (value as any).label ?? (value as any).name : value
-    )
-    if (text && text.length <= TAG_MAX_LENGTH) tags.push(text)
-  }
-
-  for (const key of keys) add(row[key])
-  return tags
-}
-
-/**
- * Object detection nests its labels under `frames[].detections[].label`, but the
- * artifact may also carry a flat `objects` list — collect from whichever exists.
- */
-function objectLabels(row: Record<string, any>): string[] {
-  const labels = new Set<string>()
-
-  const add = (value: unknown) => {
-    const text = label(value)
-    if (text) labels.add(text)
-  }
-
-  for (const entry of Array.isArray(row.objects) ? row.objects : []) {
-    add(typeof entry === 'object' && entry ? entry.label ?? entry.name : entry)
-  }
-
-  const detectionGroups = [
-    ...(Array.isArray(row.detections) ? [row.detections] : []),
-    ...(Array.isArray(row.frames) ? row.frames.map((frame: any) => frame?.detections) : []),
-  ]
-  for (const group of detectionGroups) {
-    for (const detection of Array.isArray(group) ? group : []) {
-      add(typeof detection === 'object' && detection ? detection.label : detection)
+  for (const group of groups) {
+    for (const value of Array.isArray(group) ? group : group ? [group] : []) {
+      const text = String(value).trim()
+      if (text && text !== 'unknown' && text.length <= TAG_MAX_LENGTH) tags.push(text)
     }
   }
-
-  return [...labels]
+  return [...new Set(tags)]
 }
 
-/** Index name → its rows for this video, keyed by time range. */
-type SideIndexes = Record<string, Map<string, Shot>>
+/**
+ * One chunk → one scene.
+ *
+ * Core merges every analyzer's output onto the chunk before returning it, so
+ * this is a field mapping and nothing more. The VideoDB version needed ~90
+ * lines to align five separately-queried indexes by time range; that whole
+ * layer is gone.
+ */
+function toScene(chunk: ChunkOut): SceneSegment {
+  const scene = chunk.default_video ?? {}
+  const ocrText = (chunk.ocr?.texts ?? [])
+    .map((entry) => entry.text)
+    .filter(Boolean)
+    .join(' · ')
 
-function toScene(shot: Shot, index: number, side: SideIndexes): SceneSegment {
-  const row = indexRow(shot.metadata, INDEX.scene)
-  const key = timeKey(shot)
-
-  const rowOf = (name: string) => {
-    const match = side[name]?.get(key)
-    return match ? indexRow(match.metadata, name) : {}
-  }
-
-  const ocrRow = rowOf(INDEX.ocr)
+  const detected = (chunk.object_detection?.detections ?? []).map((d) => d.object)
 
   return {
-    id: `${shot.start}-${shot.end}-${index}`,
-    start: Number(shot.start) || 0,
-    end: Number(shot.end) || 0,
-    // A default VLM writes free prose into `text`; `scene_description` only exists on
-    // indexes built by the old schema'd analyzer, and is kept so they still render.
-    description: String(row.text || row.scene_description || shot.text || '').trim(),
-    on_screen_text: label(ocrRow.combined_text ?? ocrRow.text),
-    // Deduped because a place often shows up as both `location` and `setting`.
-    tags: [
-      ...new Set([
-        ...tagsFrom(rowOf(INDEX.activity), ['activity', 'labels', 'actions']),
-        ...tagsFrom(rowOf(INDEX.location), [
-          'location',
-          'location_type',
-          'setting',
-          'time_of_day',
-        ]),
-      ]),
-    ],
-    visible_objects: objectLabels(rowOf(INDEX.objects)),
+    id: `${chunk.start}-${chunk.end}-${chunk.chunk_id}`,
+    start: Number(chunk.start) || 0,
+    end: Number(chunk.end) || 0,
+    description: (scene.description ?? '').trim(),
+    on_screen_text: ocrText || chunk.ocr?.summary || null,
+    tags: shortLabels(scene.tags, scene.actions, scene.setting),
+    visible_objects: [...new Set([...(scene.objects ?? []), ...detected])],
   }
 }
 
-/** Scenes + transcript for the studio timeline, in one round trip. */
+/**
+ * Speech, from whichever analyzer produced it.
+ *
+ * `diarization` is a strict superset of `transcript` — same Whisper text, plus
+ * who said it — and the two are mutually exclusive at ingest, so at most one of
+ * these branches has anything in it.
+ */
+function toTranscript(chunks: ChunkOut[]): TranscriptSegment[] {
+  const segments: TranscriptSegment[] = []
+
+  for (const chunk of chunks) {
+    for (const turn of chunk.diarization?.turns ?? []) {
+      if (turn.text?.trim()) {
+        segments.push({
+          start: turn.start,
+          end: turn.end,
+          text: turn.text.trim(),
+          speaker: turn.speaker,
+        })
+      }
+    }
+
+    const plain = chunk.transcript?.text?.trim()
+    if (plain) segments.push({ start: chunk.start, end: chunk.end, text: plain })
+  }
+
+  return segments.sort((a, b) => a.start - b.start)
+}
+
+/** Chapters and events are LLM-written and loosely shaped; coerce defensively. */
+function toChapters(result: unknown): Chapter[] {
+  const rows = (result as any)?.chapters
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((row: any) => ({
+      title: String(row?.title ?? 'Untitled'),
+      start: Number(row?.start) || 0,
+      end: Number(row?.end) || 0,
+      summary: row?.summary ? String(row.summary) : undefined,
+    }))
+    .filter((chapter) => chapter.end > chapter.start)
+    .sort((a, b) => a.start - b.start)
+}
+
+function toEvents(result: unknown): VideoEvent[] {
+  const rows = (result as any)?.events
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((row: any) => ({
+      time: Number(row?.time ?? row?.start) || 0,
+      description: String(row?.description ?? row?.event ?? '').trim(),
+      actor: row?.actor ? String(row.actor) : undefined,
+      category: row?.category ? String(row.category) : undefined,
+    }))
+    .filter((event) => event.description)
+    .sort((a, b) => a.time - b.time)
+}
+
+/** Scenes, transcript, chapters and events for the studio timeline, in one round trip. */
 export async function GET(_request: Request, { params }: { params: Params }) {
   const { videoId } = await params
 
@@ -139,83 +126,64 @@ export async function GET(_request: Request, { params }: { params: Params }) {
 
   const supabase = await createSupabaseServer()
   const { data: video } = await supabase
-    .from('videos')
+    .from('video_core')
     .select('*')
     .eq('id', videoId)
     .eq('user_id', user.id)
     .single()
 
   if (!video) return new Response('Video not found', { status: 404 })
-  if (!video.videodb_video_id) {
-    return new Response('This video has not been ingested yet', { status: 409 })
+  if (!video.core_video_id) {
+    return new Response('This video has not been analysed yet', { status: 409 })
   }
 
   const errors: string[] = []
 
-  const rows = (indexName: string) =>
-    videodb.query({
-      video_id: video.videodb_video_id,
-      index_name: indexName,
-      limit: SCENE_LIMIT,
-      return_fields: [indexName],
-    })
-
-  // The scene index carries the timeline on its own; these only enrich it, so one of
-  // them failing (still building, or never built) must not blank the strip.
-  const SIDE_INDEXES = [INDEX.ocr, INDEX.objects, INDEX.activity, INDEX.location] as const
-
-  const [sceneResult, transcriptResult, ...sideResults] = await Promise.allSettled([
-    rows(INDEX.scene),
-    videodb.transcript(video.videodb_video_id, { segmenter: 'sentence' }),
-    ...SIDE_INDEXES.map(rows),
+  // Chapters and events are optional: they only exist if those aggregators ran,
+  // and one of them missing must not blank the strip the scenes carry on their own.
+  const [chunksResult, chaptersResult, eventsResult] = await Promise.allSettled([
+    core.chunks(video.core_video_id, { limit: CHUNK_LIMIT }),
+    core.aggregates(video.core_video_id, 'chapters'),
+    core.aggregates(video.core_video_id, 'events'),
   ])
 
-  const side: SideIndexes = Object.fromEntries(
-    SIDE_INDEXES.map((name, position) => {
-      const result = sideResults[position]
-      return [
-        name,
-        new Map(
-          result?.status === 'fulfilled' ? result.value.map((shot) => [timeKey(shot), shot]) : []
-        ),
-      ]
-    })
-  )
-
   let scenes: SceneSegment[] = []
-  if (sceneResult.status === 'fulfilled') {
-    scenes = sceneResult.value
-      .map((shot, index) => toScene(shot, index, side))
-      .filter((scene) => scene.end > scene.start)
-      .sort((a, b) => a.start - b.start)
-  } else {
-    errors.push(`Scenes unavailable: ${sceneResult.reason?.message ?? sceneResult.reason}`)
-  }
-
   let transcript: TranscriptSegment[] = []
-  if (transcriptResult.status === 'fulfilled') {
-    transcript = transcriptResult.value.segments.sort((a, b) => a.start - b.start)
+
+  if (chunksResult.status === 'fulfilled') {
+    const chunks = chunksResult.value.chunks ?? []
+    scenes = chunks
+      .map(toScene)
+      .filter((scene) => scene.end > scene.start && (scene.description || scene.tags.length))
+      .sort((a, b) => a.start - b.start)
+    transcript = toTranscript(chunks)
   } else {
     errors.push(
-      `Transcript unavailable: ${transcriptResult.reason?.message ?? transcriptResult.reason}`
+      `Scenes unavailable: ${chunksResult.reason?.message ?? chunksResult.reason}`
     )
   }
 
-  // The stored duration can be null for URL sources — fall back to the last segment.
-  const lastEnd = Math.max(
-    scenes.at(-1)?.end ?? 0,
-    transcript.at(-1)?.end ?? 0
-  )
+  // A 400 here means "this video has no such aggregate", which is a normal state
+  // rather than a failure — the aggregator either has not run or was skipped.
+  const chapters =
+    chaptersResult.status === 'fulfilled' ? toChapters(chaptersResult.value.result) : []
+  const events = eventsResult.status === 'fulfilled' ? toEvents(eventsResult.value.result) : []
+
+  // The stored duration can be null for rows written before ingest finished —
+  // fall back to the last thing on the timeline.
+  const lastEnd = Math.max(scenes.at(-1)?.end ?? 0, transcript.at(-1)?.end ?? 0)
 
   const timeline: VideoTimeline = {
     video_id: video.id,
-    videodb_video_id: video.videodb_video_id,
+    core_video_id: video.core_video_id,
     title: video.title,
     duration: video.duration ?? (lastEnd > 0 ? lastEnd : null),
-    stream_url: video.stream_url,
-    thumbnail_url: video.thumbnail_url,
+    playback_url: video.playback_url,
+    poster_url: video.poster_url,
     scenes,
     transcript,
+    chapters,
+    events,
     errors,
   }
 

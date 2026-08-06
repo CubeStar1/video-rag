@@ -1,38 +1,92 @@
-\section{Problem Understanding}
+\section{Introduction and Problem Understanding}
 
-Recorded surveillance is one long timeline with nothing but a clock to index it. To
-find something you pick a date and time and scrub until you see it. That works if you
-already know when it happened. Usually you don't. What you have is a description of
-what happened, because someone told you: a man in a yellow shirt left a bag near the
-checkout. You cannot search for that, because nothing in the recording chain has ever
-written down what is in the footage.
+\subsection{System Identification}
 
-General-purpose video AI does not fill the gap. It is built for edited video, and it
-assumes three things surveillance does not have:
+This document specifies the design of \textbf{FalconVQA}, short for Fast Augmented
+Language-based CONversational Video Question Answering. It is a retrieval and question
+answering system for recorded video, developed with surveillance footage as its
+primary application domain. The name records the four properties the system is
+designed around: retrieval that is \textbf{fast} enough to be interactive, an index
+\textbf{augmented} beyond the raw signal with structured descriptions produced by vision
+and audio models, a \textbf{language-based} interface in which both the index and the
+query are natural language, and a \textbf{conversational} access path in which an
+operator or an autonomous agent asks questions of a recording and receives cited
+answers rather than a list of files.
+
+\subsection{Problem Statement}
+
+A natural language front end that extracts the relevant footage from a given recorded
+video by description alone.
+
+\subsubsection*{Background}
+
+Surveillance footage is generally recorded onto network video recorders and other
+digital storage devices. Finding a particular piece of footage is carried out by
+entering the date and time of the incident and reviewing what comes back, which is
+slow. The recording exists as a continuous timeline indexed by nothing but a clock, so
+the date and time are the only handles the operator has.
+
+That procedure works only when the time of the incident is already known. In practice it
+usually is not. What is available instead is a description of the event, obtained from a
+witness or from a report: a man in a yellow shirt left a bag near the checkout. No stage
+of the recording chain produces any account of what the footage contains, so a
+description of this kind cannot be used as a query at all.
+
+\subsubsection*{Challenge}
+
+To develop a simple natural language front end in which the operator types a description
+of the event into a prompt box, and the matching footage is extracted and played back.
+
+Two things stand between the description and the playback. The first is that the footage
+carries no description to match against, so one has to be derived. The second is that
+general-purpose video understanding tools do not derive it, because they are built for
+edited media and rely on three properties surveillance footage does not have:
 
 \begin{itemize}
-  \item Shot cuts to split on. A fixed camera has none.
-  \item Speech to transcribe. Most of the footage is silent.
-  \item Events that look dramatic. Real ones are brief and ordinary.
+  \item \textbf{Shot boundaries.} A fixed camera produces none.
+  \item \textbf{Speech.} A substantial proportion of surveillance footage is silent.
+  \item \textbf{Visually salient events.} Events of interest are typically brief and
+        visually unremarkable.
 \end{itemize}
 
-Given footage like this, such tools either treat the whole hour as one segment or cut
-it into thousands of near-identical ones. Neither can be searched.
+Applied to such footage, these tools either return the entire recording as a single
+segment or subdivide it into a large number of near-identical segments. Neither result
+is searchable.
 
-So the problem is to describe footage that has almost no structure of its own, and
-make it findable by that description. The operator should type what they are looking
-for and get the moment back, with a timestamp, ready to play.
+The problem this project addresses is therefore twofold: derive a descriptive
+representation of footage that has little intrinsic structure, and make the footage
+retrievable through that representation. The operator states what is being looked for in
+plain language and receives the corresponding moment, timestamped and ready to play.
 
-\subsection{What we set out to deliver}
+\subsection{Project Objectives}
 
-\begin{itemize}
-  \item A working pipeline that takes a recording and makes it searchable by description.
-  \item Search that returns ranked moments with timecodes, and question answering that
-        gives an answer with references instead of a list of clips.
-  \item Video-level output an operator can read without watching anything: summary,
-        chapters, events, who and what appeared, and anything unusual.
-  \item A web interface where all of this happens in one place --- upload, search, ask,
-        and play the moment.
-  \item A documented HTTP API, so the same system can be driven by an LLM agent rather
-        than only by a person.
-\end{itemize}
+The system is required to deliver the following:
+
+\begin{enumerate}[label=O-\arabic*.,leftmargin=3.0em]
+  \item A processing pipeline that accepts a recording and renders it searchable by
+        description.
+  \item Semantic search returning ranked moments with timecodes, and question
+        answering that returns a synthesised answer with references to the moments it
+        was derived from.
+  \item Video-level output that can be read in place of watching the footage: a
+        summary, chapters, notable events, the people and objects that appear, and
+        any anomalies.
+  \item A multi-tenant web application in which uploading, searching, questioning and
+        playback are performed in a single workspace, with each operator's recordings
+        isolated from every other operator's.
+  \item A documented and self-describing HTTP API, so that the same capabilities can
+        be driven by an LLM agent rather than only by a human operator.
+\end{enumerate}
+
+\subsection{Document Organisation}
+
+Section~2 presents the solution and the processing pipeline in outline. Section~3 states
+the functional and non-functional requirements. Section~4 records the design
+enhancements that distinguish the system from a conventional caption-and-embed pipeline.
+Section~5 is the detailed design: each of the four pipeline stages, the models employed,
+the parameters governing them and the outputs produced. Section~6 specifies the
+architecture and technology stack, and Section~7 the database design across all four
+stores. Section~8 describes the user interface. Section~9 states the acceptance criteria
+and the test cases that establish them, followed by the plan under which those cases are
+run: the environment, the test data, the entry and exit criteria, and what is automated.
+Section~10 sets out the execution schedule and the distribution of work.

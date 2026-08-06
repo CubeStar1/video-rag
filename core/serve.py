@@ -1,12 +1,3 @@
-"""Start VideoMind.
-
-    python serve.py                # API + web UI
-    python serve.py --api-only     # API only, no UI
-
-Sets the quieting environment variables before anything imports transformers,
-then hands off to uvicorn.
-"""
-
 import argparse
 import os
 import warnings
@@ -19,7 +10,7 @@ warnings.filterwarnings("ignore")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the VideoMind server.")
+    parser = argparse.ArgumentParser(description="Run the FalconVQA server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8077)
     parser.add_argument("--reload", action="store_true", help="restart on code changes")
@@ -27,15 +18,13 @@ def main() -> None:
                         help="serve the API without the web UI")
     args = parser.parse_args()
 
-    # Read by videomind.api.ui at import time, so it must be set before uvicorn
-    # imports the app - including in the reloader's child process.
     if args.api_only:
         os.environ["VIDEOMIND_UI"] = "0"
 
     import uvicorn
 
     what = "API" if args.api_only else "API + UI"
-    print(f"VideoMind ({what}) -> http://{args.host}:{args.port}")
+    print(f"FalconVQA ({what}) -> http://{args.host}:{args.port}")
     if not args.api_only:
         print(f"  UI    http://{args.host}:{args.port}/")
     print(f"  docs  http://{args.host}:{args.port}/docs")

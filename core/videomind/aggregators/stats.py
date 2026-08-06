@@ -22,7 +22,7 @@ class StatsAggregator:
     """
 
     id = "stats"
-    depends_on = ()  # uses whatever analyzers happen to be present
+    depends_on = ()
 
     def aggregate(self, ctx: AggregateContext) -> dict | None:
         chunks = ctx.chunks()

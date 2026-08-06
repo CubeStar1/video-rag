@@ -1,0 +1,133 @@
+---
+title: Adding videos
+description: Uploading files or URLs, choosing analyzers and chunking, and what each ingest status means.
+---
+
+import { Steps, Step } from 'fumadocs-ui/components/steps'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+## The upload dialog
+
+**Upload** in the project workspace opens a dialog with two halves: where the video comes from,
+and how it should be analysed.
+
+### Sources
+
+- **Files** — dropped or picked, accepting `video/*`. Each file is uploaded to the project's
+  Supabase Storage bucket first; the resulting public URL is what core is handed.
+- **URLs** — any direct `http(s)` video URL. Nothing is copied on this path; core downloads it
+  itself.
+
+Several of each can be queued at once. Each source becomes its own job with its own progress row
+in the dialog.
+
+<Callout type="warn">
+  Supabase caps uploads at 50 MB by default. Raise the bucket limit, or add large videos by URL
+  instead — that path never pushes the bytes through the browser or through core's process.
+</Callout>
+
+### Analyzers
+
+The list is built at runtime from `GET /api/core/capabilities`, which proxies core's `/analyzers`
+and `/schema`. It is not a hardcoded constant: adding an analyzer to core is meant to touch one
+module and one registry line, and a hardcoded list here would quietly make that "…and the
+frontend".
+
+Each option shows what it produces and whether it bills per chunk. `transcript` and `diarization`
+are mutually exclusive, and the dialog greys the second one out rather than letting the submit
+fail with a `400`.
+
+Default selection: `default_video` + `diarization`.
+
+### Chunking
+
+Three modes, matching core's:
+
+| Mode | Control |
+|---|---|
+| **Preset** | `Audio + video`, `Audio-led` or `Video-led`, each labelled with what it suits |
+| **Custom weights** | Sliders for `speaker`, `silence`, `cut`, `semantic` |
+| **Fixed interval** | Seconds per chunk; min/max bounds do not apply |
+
+Preset and weights modes also expose **shortest** and **longest** chunk. See
+[Chunking](/docs/concepts/chunking) for what these actually do.
+
+The chosen config is stored on the row as `ingest_config` and replayed verbatim on re-index.
+
+## What happens on submit
+
+<Steps>
+
+<Step>
+### The row is created first
+
+Before core has seen a byte. The video's core id is the hash of its contents, so it does not exist
+until the download finishes — everything identifying arrives later, through the job.
+</Step>
+
+<Step>
+### Core is handed the URL
+
+`POST /videos/url` returns `202` and a job id, which is written to the row along with
+`status: 'queued'`.
+
+If core is unreachable, the row is marked `failed` with the reason, and the API responds `502`.
+The video is still in the list, and **Re-index** is the way out.
+</Step>
+
+<Step>
+### Progress is reconciled on poll
+
+Each poll of `GET /api/videos?projectId=…` brings any in-flight row up to date with the core job
+it is waiting on, and persists what changed. Core's pipeline stages map onto the row's status:
+
+| Core stage | Row status |
+|---|---|
+| `fetching`, `chunking`, `chunked` | `analyzing` |
+| `analyzing`, `indexing`, `aggregating` | `analyzing` |
+| `complete` | `ready` |
+| job failed | `failed` |
+</Step>
+
+<Step>
+### The result is written back
+
+When the job finishes, the row gains `core_video_id`, `playback_url`, `poster_url`, `duration`,
+`size_bytes`, `chunk_config`, `chunk_count`, `analyzers` and `aggregates`. Only then is the video
+`ready` and searchable.
+</Step>
+
+</Steps>
+
+## Statuses
+
+| Status | Meaning |
+|---|---|
+| `pending` | Row created, core not yet called |
+| `uploading` | The browser is still pushing bytes to Storage |
+| `queued` | Core accepted the job |
+| `analyzing` | Core is working — `stage` says which part |
+| `ready` | Searchable |
+| `failed` | `error` says why. Re-index to retry |
+
+## Re-indexing
+
+Available from the card menu. There is no separate re-index call in core: ingest is idempotent on
+the content hash, so handing it the same source URL again re-analyses the same video in place.
+
+- **Same chunking** — analyzers that already ran keep their output; newly requested ones are
+  added.
+- **Different chunking** — chunks are replaced and the vectors describing the old ones are
+  dropped.
+
+Either way, aggregates recompute when the analyzer set changed.
+
+## Deleting
+
+Deleting a video removes its row. Core is only told to delete its copy once **nothing else
+references it**: the same file uploaded to two projects is one video in core, and destroying it
+because this row went away would silently destroy the other project's analysis.
+
+When core does delete, it drops the vectors, the record, the bucket objects and the cached file in
+one call. Partial deletion is worse than none — vectors without a record are uncitable, and an
+object without either is unreachable bytes nothing will ever collect.

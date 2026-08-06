@@ -1,0 +1,110 @@
+---
+title: Overview
+description: The core HTTP API — base URL, conventions, and every endpoint at a glance.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Cards, Card } from 'fumadocs-ui/components/card'
+
+`core` is the analysis engine, served over HTTP by FastAPI. It owns chunking, analysis,
+indexing, aggregation, search and question answering. The web UI and the Next.js frontend are
+both clients of this API — there is nothing either can do that this API cannot.
+
+**Base URL** — `http://127.0.0.1:8077` by default.
+**Interactive docs** — `/docs` (Swagger) and `/redoc`, generated from the same definitions.
+**OpenAPI** — `/openapi.json`.
+
+## Every endpoint
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness, plus what this instance has loaded |
+| `GET` | `/schema` | Everything searchable and filterable — **read this first** |
+| `GET` | `/analyzers` | Registered analyzers and vector fields |
+| `POST` | `/videos` | Upload a video file and start ingestion |
+| `POST` | `/videos/url` | Ingest a video from an `http(s)` URL |
+| `GET` | `/jobs` | Every job this process has seen |
+| `GET` | `/jobs/{job_id}` | One job's progress and result |
+| `GET` | `/videos` | Ingested videos |
+| `GET` | `/videos/{video_id}` | One video's metadata |
+| `DELETE` | `/videos/{video_id}` | Remove vectors, record, bucket objects and cache |
+| `GET` | `/videos/{video_id}/chunks` | Stored analyzer output, scoped and paginated |
+| `GET` | `/videos/{video_id}/chunks/{chunk_id}` | Everything produced for one chunk |
+| `GET` | `/videos/{video_id}/aggregates` | Video-level results |
+| `POST` | `/videos/{video_id}/aggregates` | Re-run aggregators without re-analysing |
+| `GET` | `/videos/{video_id}/entities` | People linked across chunks, with timelines |
+| `POST` | `/query` | Vector search, optionally with a synthesised answer |
+| `POST` | `/ask` | Answer a question using aggregates as well as segments |
+| `GET` | `/media/{video_id}` | Redirect to the video in Storage |
+| `GET` | `/` | The built-in web UI (absent with `--api-only`) |
+
+## Conventions
+
+**Everything is a read except the two ingest routes**, which spend time and money.
+`POST /query` and `POST /ask` are POSTs only because their bodies are too complex for a query
+string — they change nothing.
+
+**Ingestion is asynchronous.** Both ingest routes and the aggregate re-run return `202` with a
+`job_id`. Poll `GET /jobs/{job_id}` until `status` is `done` or `failed`.
+
+**Videos are URLs, never paths.** Every response carries Storage URLs. Nothing above
+`storage.py` knows a local path exists.
+
+**Ids are content hashes.** `video_id` is `sha1(bytes)[:16]`, so re-ingesting the same file is
+recognised as the same video. See [Glossary](/docs/concepts/glossary).
+
+**Reads are free.** `/videos`, `/chunks` and `/aggregates` are served from JSON records on disk;
+they cost no model calls and no vector search.
+
+## Discovery first
+
+<Callout type="info">
+  `GET /schema` returns, in one call, every analyzer, every vector field, every detail level,
+  every filter with its type and payload field, and every aggregator with its dependencies and
+  whether it costs API calls. Build queries from it rather than hardcoding field names — an
+  install with an extra analyzer registered is a valid install.
+</Callout>
+
+## A minimal session
+
+```bash
+# 1. What can this install do?
+curl http://127.0.0.1:8077/schema
+
+# 2. Ingest
+curl -X POST http://127.0.0.1:8077/videos/url \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/clip.mp4","analyzers":"default_video,diarization"}'
+# -> {"job_id":"d9b16a609ab1","status":"queued","source":"https://example.com/clip.mp4"}
+
+# 3. Poll
+curl http://127.0.0.1:8077/jobs/d9b16a609ab1
+# -> ... "status":"done", "result": { "video_id": "95e110e25070fcfc", ... }
+
+# 4. Search
+curl -X POST http://127.0.0.1:8077/query \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"someone approaching the counter","video_ids":["95e110e25070fcfc"],"detail":"minimal"}'
+
+# 5. Ask
+curl -X POST http://127.0.0.1:8077/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What happens in this video?","video_ids":["95e110e25070fcfc"]}'
+```
+
+## Sections
+
+<Cards>
+  <Card title="Authentication" href="/docs/api/authentication" description="The shared-secret header, and what it is and is not." />
+  <Card title="Errors" href="/docs/api/errors" description="Status codes, the error shape, and which failures land on the job instead of the request." />
+  <Card title="Discovery" href="/docs/api/discovery" description="/health, /schema, /analyzers." />
+  <Card title="Ingestion" href="/docs/api/ingestion" description="Upload a file or hand over a URL." />
+  <Card title="Jobs" href="/docs/api/jobs" description="Polling background work." />
+  <Card title="Videos" href="/docs/api/videos" description="List, read, delete, and the media redirect." />
+  <Card title="Chunks" href="/docs/api/chunks" description="Reading stored analyzer output." />
+  <Card title="Query" href="/docs/api/query" description="Vector search with filters and detail levels." />
+  <Card title="Ask" href="/docs/api/ask" description="Question answering routed to aggregates." />
+  <Card title="Aggregates" href="/docs/api/aggregates" description="Reading and re-running video-level results." />
+  <Card title="Entities" href="/docs/api/entities" description="People linked across a whole video." />
+  <Card title="Objects" href="/docs/api/objects" description="Every response shape, in one place." />
+</Cards>

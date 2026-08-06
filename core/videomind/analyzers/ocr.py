@@ -44,10 +44,6 @@ class OCRAnalyzer:
         similarity_threshold: float = 0.985,
         max_frames: int = 6,
         workers: int = 6,
-        # Reading text needs far more resolution than describing a scene. At
-        # the 768px default, small or low-contrast text is simply illegible:
-        # on HUD footage that width missed the range and target labels
-        # entirely, while 1600px + detail="high" recovered them.
         max_width: int = 1600,
         detail: str = "high",
     ):
@@ -72,7 +68,7 @@ class OCRAnalyzer:
             if len(boxes := text_detect.detect_boxes(frame)) >= self.min_boxes
         ]
         if not with_text:
-            return [], []  # nothing to read: no API call for this chunk
+            return [], []
 
         embeddings = semantic.embed_images([f for _, f, _ in with_text])
 
@@ -82,9 +78,6 @@ class OCRAnalyzer:
                 kept.append(i)
                 continue
             similar = (embeddings[i] @ embeddings[kept[-1]].T).item() >= self.similarity_threshold
-            # An image-similarity check alone would drop a frame whose text
-            # changed while the scene stayed still, so a shifted text layout
-            # also counts as new.
             moved = text_detect.layout_changed(
                 text_detect.layout_signature(with_text[kept[-1]][2]),
                 text_detect.layout_signature(with_text[i][2]),
@@ -128,8 +121,6 @@ class OCRAnalyzer:
             return {}
 
         entries = output.get("texts") or []
-        # Both halves are searchable: the words themselves, and what they are.
-        # "sign above the checkout" should find it as readily as its wording.
         lines = [f"{e.get('text', '')} - {e.get('context', '')}".strip(" -") for e in entries]
         summary = (output.get("summary") or "").strip()
 
@@ -141,5 +132,5 @@ class OCRAnalyzer:
         if summary:
             fields["description"] = summary
         if raw := " ".join(e.get("text", "") for e in entries).strip():
-            fields["objects"] = raw  # the literal strings, without their descriptions
+            fields["objects"] = raw
         return fields

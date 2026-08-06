@@ -12,10 +12,6 @@ def export_chunks(video_path: str, chunks: Chunks, out_dir: str) -> list[str]:
     Decodes the source once and routes every frame to whichever chunk covers
     its timestamp, rather than re-opening and re-seeking the file per chunk.
     """
-    # Always start clean: chunk boundaries shift whenever weights, presets or
-    # detectors change, so leftover clips from a previous run would sit
-    # alongside the new ones under stale names and silently be reviewed as
-    # current.
     out_path = Path(out_dir)
     if out_path.exists():
         for old in out_path.glob("chunk_*.mp4"):
@@ -36,7 +32,7 @@ def export_chunks(video_path: str, chunks: Chunks, out_dir: str) -> list[str]:
         v_out = out.add_stream("libx264", rate=fps)
         v_out.width, v_out.height, v_out.pix_fmt = v_in.width, v_in.height, "yuv420p"
         v_out.time_base = v_in.time_base
-        v_out.options = {"preset": "veryfast", "crf": "26"}  # review copies, not masters
+        v_out.options = {"preset": "veryfast", "crf": "26"}
 
         a_out = None
         if a_in is not None:
@@ -52,7 +48,7 @@ def export_chunks(video_path: str, chunks: Chunks, out_dir: str) -> list[str]:
                 "a": a_out,
                 "start": start,
                 "end": end,
-                "v_pts": None,  # pts of this chunk's first frame, set on arrival
+                "v_pts": None,
                 "a_pts": None,
             }
         )
@@ -73,10 +69,6 @@ def export_chunks(video_path: str, chunks: Chunks, out_dir: str) -> list[str]:
             continue
 
         if isinstance(frame, av.VideoFrame):
-            # Shift pts so each clip starts at t=0, keeping the source
-            # time_base. Restamping into a fresh clock instead makes the
-            # muxer reinterpret the values against the container default and
-            # the file reports a nonsense duration.
             if writer["v_pts"] is None:
                 writer["v_pts"] = frame.pts
             frame.pts -= writer["v_pts"]

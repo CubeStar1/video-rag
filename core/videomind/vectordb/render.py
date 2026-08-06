@@ -1,16 +1,4 @@
-"""How each extractor's output becomes the strings that get embedded.
 
-Each extractor produces one text per named vector space. "combined" is the
-default search space and flattens everything; the per-field spaces let a query
-target just people or just objects, where a short precise match would
-otherwise be diluted inside a 200-word blob.
-
-Fields are omitted rather than emitted empty: a point with no `people` vector
-is simply not a candidate in a people-scoped search, which is the correct
-behaviour for a chunk the VLM saw nobody in.
-"""
-
-# Named vector spaces. "combined" must exist for every extractor.
 VECTOR_FIELDS = ("combined", "description", "people", "actions", "objects")
 
 
@@ -30,9 +18,6 @@ def render_structured_scene(output: dict) -> dict[str, str]:
 
     if description := output.get("description", "").strip():
         fields["description"] = description
-    # People and actions are phrased as full clauses, so they embed well on
-    # their own. Objects are terser but still worth a space; tags and setting
-    # stay filter-only - too repetitive across chunks to carry signal.
     if people := output.get("people"):
         fields["people"] = "; ".join(people)
     if actions := output.get("actions"):

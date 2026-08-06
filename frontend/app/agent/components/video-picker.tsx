@@ -3,13 +3,13 @@
 import { Check, Film, Loader2, Video, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { formatDuration } from '@/lib/videodb/format'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import { formatDuration } from '@/lib/core/format'
+import type { ProjectVideo } from '@/lib/core/types'
 
 interface VideoPickerProps {
   videos: ProjectVideo[]
   selectedIds: string[]
-  onToggle: (videodbVideoId: string) => void
+  onToggle: (coreVideoId: string) => void
   onClear: () => void
   disabled?: boolean
 }
@@ -22,7 +22,7 @@ export function VideoPicker({
   onClear,
   disabled,
 }: VideoPickerProps) {
-  const selectable = videos.filter((video) => video.videodb_video_id)
+  const selectable = videos.filter((video) => video.core_video_id)
 
   return (
     <Popover>
@@ -53,12 +53,12 @@ export function VideoPicker({
 
         {selectable.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-            No videos in this project yet. Upload one from the project page.
+            No videos in this project yet. Add one with the button next to this.
           </p>
         ) : (
           <ul className="max-h-72 overflow-y-auto py-1">
             {selectable.map((video) => {
-              const id = video.videodb_video_id as string
+              const id = video.core_video_id as string
               const isSelected = selectedIds.includes(id)
               const isReady = video.status === 'ready'
 
@@ -116,7 +116,7 @@ export function VideoChips({
   return (
     <div className="flex flex-wrap gap-1.5 px-3 pt-2">
       {selectedIds.map((id) => {
-        const video = videos.find((item) => item.videodb_video_id === id)
+        const video = videos.find((item) => item.core_video_id === id)
         return (
           <span
             key={id}

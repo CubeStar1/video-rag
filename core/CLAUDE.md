@@ -46,6 +46,7 @@ api/app.py               thin HTTP layer
 api/ui.py                web UI, mounted only when VIDEOMIND_UI != 0
 storage.py               Supabase Storage <-> local cache; the only module
                          that knows both a URL and a path
+youtube.py               yt-dlp; the one fetch that is not a plain GET
 paths.py                 every path, all env-overridable
 ```
 
@@ -68,6 +69,18 @@ over HTTP.
   Storage URLs; everything below `storage.py` gets a local path and does not
   know Storage exists. The boundary is one module because it is the only place
   both forms are valid at once.
+- **YouTube resolves to a file, then rejoins the ordinary path.** A GET of a
+  watch URL returns a player page, and the media sits behind short-lived signed
+  URLs, so it is the one fetch that cannot be `httpx.stream`. `fetch_source`
+  branches to `youtube.py`, which hands back a temp file that goes through
+  `put_local` — so the content hash, the cache, the bucket and every response
+  shape are unchanged, and only one function knows YouTube exists.
+- **Without ffmpeg, YouTube ingests arrive at 360p.** 1080p is published as
+  separate video and audio streams and merging them needs the ffmpeg *binary*;
+  PyAV bundles the libraries only. The fallback asks for a progressive format
+  rather than downloading two halves it cannot join, and `/health` reports
+  which you are getting, because a silently worse video makes every analyzer
+  downstream look worse for no visible reason.
 - **The video is downloaded, not streamed.** Analyzers each re-open the file and
   `frames.py` seeks per chunk; that access pattern is priced for a local disk
   (see the 22x seek note below) and paying it to the network instead would be

@@ -96,7 +96,7 @@ def link_observations(
         chunks_a = {observations[live[m]]["chunk_id"] for m in members[a]}
         chunks_b = {observations[live[m]]["chunk_id"] for m in members[b]}
         if chunks_a & chunks_b:
-            continue  # merging would put one subject in two places at once
+            continue
         members[a].extend(members[b])
         for m in members[b]:
             cluster_of[m] = a
@@ -105,7 +105,6 @@ def link_observations(
     groups = []
     for indices in sorted(members.values(), key=min):
         originals = [live[i] for i in indices]
-        # Fold each within-chunk duplicate back into whichever group absorbed it.
         originals += [dup for dup, target in merged_into.items() if target in originals]
         groups.append(sorted(set(originals)))
 
@@ -143,8 +142,6 @@ class EntityAggregator:
         model: str | None = None,
         link_threshold: float = 0.88,
         generic_threshold: float = 0.80,
-        # Above the 0.941 ceiling measured for provably-different people who
-        # are co-visible, so only the analyzer's own within-chunk splits merge.
         dedupe_threshold: float = 0.95,
         narrate_min_appearances: int = 2,
         max_narratives: int = 12,
@@ -160,10 +157,6 @@ class EntityAggregator:
         observations = []
         for chunk in ctx.chunks("people"):
             for person in chunk["people"].get("people", []):
-                # Clothing only. Blending in `appearance` dragged same-person
-                # scores down to 0.69-0.87 because that field drifts between
-                # chunks and sometimes carries meta-commentary ("same woman as
-                # box 3"), which the embedding treats as content.
                 signature = (person.get("clothing") or person.get("appearance") or "").strip()
                 if not signature:
                     continue
@@ -188,12 +181,6 @@ class EntityAggregator:
         similarity = vectors @ vectors.T
         count = len(observations)
 
-        # Collapse the analyzer's own within-chunk splits first. Its tracker
-        # loses people who move between sampled frames, so one person can enter
-        # this pass as two observations of the same chunk - and cannot-link
-        # would then permanently forbid reuniting them, since they look
-        # co-visible. Merging above the co-visible ceiling fixes the cause
-        # rather than weakening the constraint.
         merged_into: dict[int, int] = {}
         for i in range(count):
             if i in merged_into:
@@ -213,13 +200,10 @@ class EntityAggregator:
             similarity = vectors @ vectors.T
             count = len(observations)
 
-        # How much each description resembles every *other* one. A high mean
-        # means it describes half the video and cannot identify anyone.
         off_diagonal = similarity - np.eye(count)
         genericness = off_diagonal.sum(axis=1) / max(count - 1, 1)
         distinctive = genericness < self.generic_threshold
 
-        # Greedy agglomeration under the cannot-link constraint.
         cluster_of = list(range(count))
         members = {i: [i] for i in range(count)}
 
@@ -237,7 +221,7 @@ class EntityAggregator:
             chunks_a = {observations[m]["chunk_id"] for m in members[a]}
             chunks_b = {observations[m]["chunk_id"] for m in members[b]}
             if chunks_a & chunks_b:
-                continue  # merging would put one person in two places at once
+                continue
             members[a].extend(members[b])
             for m in members[b]:
                 cluster_of[m] = a
@@ -265,8 +249,6 @@ class EntityAggregator:
 
         entities.sort(key=lambda e: (-e["appearances"], e["first_seen"]))
 
-        # Narratives cost an API call each, so only for people actually seen
-        # more than once - a single sighting is already fully described.
         narrated = 0
         for entity in entities:
             if entity["appearances"] < self.narrate_min_appearances or narrated >= self.max_narratives:
@@ -314,8 +296,6 @@ class EntityTimelineAggregator:
         timelines = []
         for entity in entities:
             spans = [(o["start"], o["end"]) for o in entity["observations"]]
-            # Observed presence, not first-to-last: someone seen at 0s and again
-            # at 300s was not necessarily present for five minutes.
             observed = sum(end - start for start, end in spans)
             timelines.append({
                 "entity_id": entity["entity_id"],

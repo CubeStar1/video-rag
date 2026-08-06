@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .. import aggregators, analyzers, store, storage
+from .. import aggregators, analyzers, poster, store, storage, youtube
 from ..chunk import chunk_video
-from ..paths import RECORDS_DIR, ensure as ensure_dirs
+from ..paths import CACHE_DIR, RECORDS_DIR, ensure as ensure_dirs
 from ..vectordb import ChunkStore, config_key
 
 
@@ -18,6 +18,11 @@ def validate_source(url: str) -> None:
     if scheme not in storage.ALLOWED_SCHEMES:
         raise ValueError(
             f"Unsupported URL scheme {scheme or '(none)'!r}; expected http or https"
+        )
+    if youtube.is_youtube(url) and not youtube.available():
+        raise ValueError(
+            "This URL is a YouTube link, but yt-dlp is not installed on the "
+            "server; install it or supply a direct video URL."
         )
 
 
@@ -57,18 +62,19 @@ def upload(
     cost: the scene analyzer bills per chunk, transcription is free.
     """
     analyzer_ids = analyzer_ids or ["default_video"]
-    analyzers.validate_selection(analyzer_ids)  # fail fast before doing any work
+    analyzers.validate_selection(analyzer_ids)
 
     def report(stage, **info):
         if progress:
             progress(stage, info)
 
-    # Before chunking: a slow download of a large video is the one stage that
-    # can run for minutes with nothing to show for it.
     report("fetching")
     media = resolve_source(source)
     video_id, video_path = media["video_id"], media["local_path"]
     cfg = config_key(preset, min_duration, max_duration, weights=weights, interval=interval)
+
+    duration = poster.duration_of(video_path)
+    poster_url = _write_poster(video_id, video_path)
 
     report("chunking")
     chunks = chunk_video(
@@ -85,16 +91,11 @@ def upload(
     cs = chunk_store or ChunkStore()
     owns_store = chunk_store is None
 
-    # Reuse the existing record when re-running against the same chunking, so
-    # analyzers run earlier keep their output instead of being overwritten by
-    # whichever set this upload happened to request.
     existing_path = record_path_for(video_id)
     existing = json.loads(existing_path.read_text(encoding="utf-8")) if existing_path else None
     if existing and existing.get("chunk_config") == cfg:
         record = existing
         record["analyzers"] = sorted(set(record.get("analyzers", [])) | set(analyzer_ids))
-        # The same bytes can arrive under a different name or from a different
-        # URL; the object that is actually current wins.
         record.update(
             video_url=media["video_url"],
             storage_path=media["storage_path"],
@@ -107,19 +108,18 @@ def upload(
             min_duration=min_duration, max_duration=max_duration,
         )
         record["analyzers"] = list(analyzer_ids)
-        # Chunk boundaries changed, so the old chunking's vectors no longer
-        # describe anything that exists - drop all of them for this video.
         if existing:
             cs.delete_video(video_id)
     record["chunk_config"] = cfg
+    record["poster_url"] = poster_url
+    record["duration"] = duration
+    record["size_bytes"] = media.get("size_bytes")
 
     indexed = {}
     try:
         for analyzer_id in analyzer_ids:
             analyzer = analyzers.get(analyzer_id)
             report("analyzing", analyzer=analyzer_id)
-            # Scoped to this analyzer: a broader delete would take out every
-            # other analyzer's vectors for the same video.
             cs.delete_video(video_id, chunk_config=cfg, extractor_id=analyzer_id)
             outputs = analyzer.analyze(chunks, ctx)
 
@@ -146,9 +146,6 @@ def upload(
         if owns_store:
             cs.close()
 
-    # Named for readability - a bare content hash is useless when you are
-    # grepping records to see what an upload produced. The id stays in the
-    # filename so two videos with the same name cannot collide.
     ensure_dirs()
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(media["filename"]).stem)[:48].strip("_")
     for stale in RECORDS_DIR.glob(f"*__{video_id[:8]}.json"):
@@ -158,15 +155,17 @@ def upload(
     result = {
         "video_id": video_id,
         "video_url": media["video_url"],
+        "poster_url": poster_url,
         "storage_path": media["storage_path"],
         "filename": media["filename"],
+        "duration": duration,
+        "size_bytes": media.get("size_bytes"),
         "chunk_config": cfg,
         "chunks": len(chunks),
+        "analyzers": record["analyzers"],
         "indexed": indexed,
     }
 
-    # Aggregators read the record just written, so they run as a final stage
-    # rather than needing the video again.
     if aggregate:
         try:
             result["aggregated"] = run_aggregators(video_id, progress=progress)
@@ -176,22 +175,83 @@ def upload(
     return result
 
 
+POSTER_NAME = "poster.jpg"
+
+
+def _write_poster(video_id: str, video_path: str) -> str | None:
+    """Extract one frame and put it in the bucket beside the video.
+
+    Never fatal: a video that analysed fine must not fail its ingest because a
+    thumbnail could not be written, so every failure here degrades to no
+    poster rather than a failed job.
+    """
+    try:
+        data = poster.poster_bytes(video_path)
+        if not data:
+            return None
+        return storage.put_object(f"{video_id}/{POSTER_NAME}", data, "image/jpeg")
+    except Exception:
+        return None
+
+
 def list_videos() -> list[dict]:
     """Videos that have been ingested, from their saved records."""
     out = []
     for path in sorted(RECORDS_DIR.glob("*.json")) if RECORDS_DIR.exists() else []:
         record = json.loads(path.read_text(encoding="utf-8"))
+        chunks = record.get("chunks", [])
         out.append(
             {
                 "video_id": record.get("video_id", path.stem),
                 "filename": record.get("filename"),
                 "video_url": record.get("video_url"),
-                "chunks": len(record.get("chunks", [])),
+                "poster_url": record.get("poster_url"),
+                "duration": record.get("duration")
+                or (round(chunks[-1]["end"], 2) if chunks else 0.0),
+                "chunks": len(chunks),
                 "chunk_config": record.get("chunk_config"),
                 "analyzers": record.get("analyzers", []),
             }
         )
     return out
+
+
+def delete_video(video_id: str) -> dict | None:
+    """Remove a video completely: vectors, record, bucket objects, cache.
+
+    Every store is dropped in one call because partial deletion is worse than
+    none - vectors without a record are unciteable, and an object without
+    either is unreachable bytes nothing will ever collect.
+
+    Storage failures are reported rather than raised: the record and the
+    vectors are the parts that make a video *visible*, and leaving those in
+    place because the bucket call failed would keep a deleted video searchable.
+    """
+    path = record_path_for(video_id)
+    if path is None:
+        return None
+    record = json.loads(path.read_text(encoding="utf-8"))
+
+    with ChunkStore() as cs:
+        cs.delete_video(video_id)
+
+    objects = [p for p in (record.get("storage_path"), f"{video_id}/{POSTER_NAME}") if p]
+    storage_error = None
+    try:
+        storage.delete(objects)
+    except Exception as exc:
+        storage_error = f"{type(exc).__name__}: {exc}"
+
+    path.unlink(missing_ok=True)
+    for cached in CACHE_DIR.glob(f"{video_id}.*"):
+        cached.unlink(missing_ok=True)
+
+    return {
+        "video_id": video_id,
+        "deleted": True,
+        "objects": objects,
+        **({"storage_error": storage_error} if storage_error else {}),
+    }
 
 
 def record_path_for(video_id: str) -> Path | None:
@@ -233,9 +293,6 @@ def _timecode(seconds: float) -> str:
     return f"{int(seconds // 60)}:{seconds % 60:05.2f}"
 
 
-# Bulky or internal keys, dropped unless explicitly asked for. `locations` is
-# per-frame box geometry that only the entity-linking pass needs, and an LLM
-# reading chunk output gains nothing from a wall of pixel coordinates.
 _INTERNAL_KEYS = ("locations",)
 
 
@@ -274,16 +331,12 @@ def _shape(hit: dict, detail: str) -> dict:
         "score": round(hit["score"], 4),
     }
     if detail == "minimal":
-        # Enough to decide what is worth fetching in full, and nothing more.
         text = (hit.get("description") or hit.get("text") or "").strip()
         base["snippet"] = text[:SNIPPET_CHARS] + ("..." if len(text) > SNIPPET_CHARS else "")
         return base
 
     base.update({
         "video_url": hit.get("video_url"),
-        # `text` is the whole flattened record that was embedded - the UI
-        # renders `description`, so carrying both doubles the response for
-        # nothing. It returns at detail="full".
         "description": hit.get("description", ""),
         "people": hit.get("people", []),
         "objects": hit.get("objects", []),
@@ -294,8 +347,6 @@ def _shape(hit: dict, detail: str) -> dict:
         "turns": hit.get("turns", []),
     })
     if detail == "full":
-        # The heavy nested records: every person's full description, every
-        # detected object, every read string. Nothing renders these in the UI.
         base.update({
             "text": hit["text"],
             "persons": hit.get("persons", []),
@@ -331,10 +382,6 @@ def run_aggregators(
     order = aggregators.resolve_order(requested, analyzers_now)
     skipped = sorted(set(requested) - set(order))
 
-    # Aggregates summarise whatever analyzers existed when they ran. Adding an
-    # analyzer later makes them stale - a summary written before `people` ran
-    # describes a video it could not see people in - so the whole set is
-    # recomputed rather than serving a confidently outdated answer.
     stale = record.get("aggregates_analyzers") != analyzers_now
     force = force or stale
 
@@ -356,7 +403,6 @@ def run_aggregators(
             try:
                 result = aggregators.get(aggregator_id).aggregate(ctx)
             except Exception as exc:
-                # One aggregator failing must not lose the others' work.
                 failed[aggregator_id] = f"{type(exc).__name__}: {exc}"
                 continue
             if result is not None:
@@ -373,8 +419,8 @@ def run_aggregators(
     return {
         "video_id": video_id,
         "ran": list(produced),
-        "reused": reused,            # already stored; pass force=True to recompute
-        "skipped": skipped,          # dependencies this video cannot satisfy
+        "reused": reused,
+        "skipped": skipped,
         "failed": failed,
         "aggregates": list(ctx.results),
         "recomputed_because_analyzers_changed": stale,
@@ -409,14 +455,18 @@ def get_video(video_id: str) -> dict | None:
         "video_id": record.get("video_id"),
         "filename": record.get("filename"),
         "video_url": record.get("video_url"),
+        "poster_url": record.get("poster_url"),
         "storage_path": record.get("storage_path"),
         "source_url": record.get("source_url"),
+        "size_bytes": record.get("size_bytes"),
         "preset": record.get("preset"),
         "params": record.get("params", {}),
         "chunk_config": record.get("chunk_config"),
         "analyzers": record.get("analyzers", []),
+        "aggregates": sorted(record.get("aggregates", {})),
         "chunks": len(chunks),
-        "duration": round(chunks[-1]["end"], 2) if chunks else 0.0,
+        "duration": record.get("duration")
+        or (round(chunks[-1]["end"], 2) if chunks else 0.0),
     }
 
 
@@ -444,8 +494,6 @@ def get_chunks(
     if analyzer_id and analyzer_id not in available:
         raise ValueError(f"Video has no {analyzer_id!r} output; it has {available}")
 
-    # Batch fetch: an agent holding chunk ids from a search gets them all in
-    # one call instead of one round trip each.
     wanted_ids = set(chunk_ids) if chunk_ids else None
 
     selected = []
@@ -459,7 +507,7 @@ def get_chunks(
         wanted = [analyzer_id] if analyzer_id else available
         outputs = {a: _strip(chunk[a], verbose) for a in wanted if chunk.get(a)}
         if analyzer_id and not outputs:
-            continue  # nothing from that analyzer for this chunk
+            continue
         selected.append({
             "chunk_id": chunk["id"],
             "start": chunk["start"],
@@ -525,12 +573,10 @@ def query(
     added there is reachable here immediately. Unknown keys raise rather than
     being ignored - a dropped filter returns plausible but wrong results.
     """
-    analyzers.get(analyzer_id)  # validate
+    analyzers.get(analyzer_id)
     if detail not in DETAIL_LEVELS:
         raise ValueError(f"Unknown detail {detail!r}; expected one of {list(DETAIL_LEVELS)}")
 
-    # `video_ids` and `analyzer` stay first-class because every caller uses
-    # them; they simply join the filter dict on the way down.
     active = dict(filters or {})
     if video_ids:
         active["video_ids"] = video_ids
@@ -650,8 +696,6 @@ Segments:
 def _synthesize(question: str, results: list[dict], model: str | None = None) -> str:
     from ..extractors.video.openai_call import DEFAULT_MODEL, _get_client
 
-    # Whichever body the detail level carried: `text` only appears at
-    # detail="full", `snippet` only at "minimal", `description` in between.
     segments = "\n\n".join(
         f"[{r['video_id']} {r['start']:.2f}-{r['end']:.2f}s] (score {r['score']})\n"
         f"{r.get('text') or r.get('description') or r.get('snippet') or ''}"

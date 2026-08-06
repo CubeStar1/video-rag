@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import type { ArtifactState, ArtifactDisplayType, StudioState } from '../types'
 
+export interface SetArtifactUIOptions {
+  title?: string
+  displayType?: ArtifactDisplayType
+  identifier?: string
+  content?: string
+  metadata?: Record<string, unknown>
+  /** The conversation opening it — see `ArtifactState.conversationId`. */
+  conversationId?: string
+}
+
 interface AgentStoreState {
   // State
   artifactState: ArtifactState
@@ -8,9 +18,10 @@ interface AgentStoreState {
 
   // Artifact actions
   handleArtifactUpdate: (artifact: Partial<ArtifactState>) => void
-  setArtifactUI: (ui: React.ReactNode, title?: string, displayType?: ArtifactDisplayType, identifier?: string, content?: string, metadata?: Record<string, unknown>) => void
+  setArtifactUI: (ui: React.ReactNode, options?: SetArtifactUIOptions) => void
   handleArtifactClose: () => void
-  handleArtifactReopen: () => void
+  /** Reopens only if the stored artifact belongs to `conversationId`. */
+  handleArtifactReopen: (conversationId?: string) => void
 
   // Studio actions
   setStudioOpen: (isOpen: boolean) => void
@@ -18,9 +29,9 @@ interface AgentStoreState {
   setActiveVideo: (videoId: string | undefined) => void
   /**
    * Move the studio player to `seconds`. Callers outside the studio (chat tool
-   * results) only know the VideoDB id, so the studio resolves it to a row itself.
+   * results) only know core's video id, so the studio resolves it to a row itself.
    */
-  seekStudio: (seconds: number, videodbVideoId?: string) => void
+  seekStudio: (seconds: number, coreVideoId?: string) => void
 }
 
 export const useAgentStore = create<AgentStoreState>((set) => ({
@@ -45,19 +56,28 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     }))
   },
 
-  setArtifactUI: (ui: React.ReactNode, title?: string, displayType: ArtifactDisplayType = 'custom', identifier?: string, content?: string, metadata?: Record<string, unknown>) => {
-    set((state) => ({
-      artifactState: {
-        ...state.artifactState,
-        ui,
-        title: title || state.artifactState.title,
-        displayType,
-        identifier: identifier || state.artifactState.identifier,
-        content: content || state.artifactState.content,
-        metadata: metadata || state.artifactState.metadata,
-        isOpen: true,
+  setArtifactUI: (ui: React.ReactNode, options: SetArtifactUIOptions = {}) => {
+    set((state) => {
+      // Carrying the previous title/content forward only makes sense within one
+      // conversation; across a switch they belong to an artifact the user is no
+      // longer looking at.
+      const isSameConversation = state.artifactState.conversationId === options.conversationId
+      const previous = isSameConversation ? state.artifactState : undefined
+
+      return {
+        artifactState: {
+          ...state.artifactState,
+          ui,
+          title: options.title || previous?.title,
+          displayType: options.displayType ?? 'custom',
+          identifier: options.identifier || previous?.identifier,
+          content: options.content || previous?.content,
+          metadata: options.metadata || previous?.metadata,
+          conversationId: options.conversationId,
+          isOpen: true,
+        },
       }
-    }))
+    })
   },
 
   handleArtifactClose: () => {
@@ -69,15 +89,15 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     }))
   },
 
-  handleArtifactReopen: () => {
+  handleArtifactReopen: (conversationId?: string) => {
     set((state) => {
-      const updates: Partial<AgentStoreState> = {
+      if (state.artifactState.conversationId !== conversationId) return state
+      return {
         artifactState: {
           ...state.artifactState,
           isOpen: true,
         },
       }
-      return updates
     })
   },
 
@@ -97,13 +117,13 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     }))
   },
 
-  seekStudio: (seconds: number, videodbVideoId?: string) => {
+  seekStudio: (seconds: number, coreVideoId?: string) => {
     set((state) => ({
       studioState: {
         ...state.studioState,
         isOpen: true,
         // The nonce makes a repeat seek to the same second a distinct request.
-        seekRequest: { seconds, videodbVideoId, nonce: Date.now() },
+        seekRequest: { seconds, coreVideoId, nonce: Date.now() },
       },
     }))
   },

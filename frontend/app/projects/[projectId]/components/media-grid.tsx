@@ -5,10 +5,11 @@ import { Film, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { VideoCard } from './video-card'
-import type { ProjectVideo } from '@/lib/videodb/types'
+import type { ProjectVideo } from '@/lib/core/types'
 
 interface MediaGridProps {
   videos: ProjectVideo[]
+  projectId: string
   isLoading: boolean
   onDelete: (videoId: string) => void
   onReindex: (videoId: string) => void
@@ -18,6 +19,7 @@ interface MediaGridProps {
 
 export function MediaGrid({
   videos,
+  projectId,
   isLoading,
   onDelete,
   onReindex,
@@ -90,6 +92,7 @@ export function MediaGrid({
               <VideoCard
                 key={video.id}
                 video={video}
+                projectId={projectId}
                 onDelete={onDelete}
                 onReindex={onReindex}
                 onPreview={onPreview}

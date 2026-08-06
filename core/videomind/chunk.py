@@ -1,22 +1,21 @@
 import math
 
-import cv2
 import numpy as np
 
+from . import poster
 from .chunking import WEIGHTS, boundaries_to_chunks, collect_boundaries, fuse
 
-# The four boundary signals a custom weighting may set.
 SIGNALS = ("speaker", "silence", "cut", "semantic")
 
 Chunks = list[tuple[float, float]]
 
 
 def _video_duration(video_path: str) -> float:
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    cap.release()
-    return frame_count / fps
+    """Container duration, or a clear error rather than silently zero chunks."""
+    duration = poster.duration_of(video_path)
+    if duration <= 0:
+        raise ValueError(f"Could not determine a duration for {video_path}")
+    return duration
 
 
 def _split_long_chunks(chunks: Chunks, max_duration: float) -> Chunks:

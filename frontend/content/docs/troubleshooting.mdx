@@ -1,0 +1,227 @@
+---
+title: Troubleshooting
+description: The failures that actually happen, what causes them, and how to clear them.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs'
+import { Accordion, Accordions } from 'fumadocs-ui/components/accordion'
+
+## Symptoms
+
+<Accordions type="single">
+
+<Accordion title="Cannot reach the analysis backend">
+
+The frontend cannot connect to core. Check, in order:
+
+1. Is core running? `curl http://127.0.0.1:8077/health`
+2. Does `CORE_API_URL` in `.env.local` match the port core actually bound?
+3. Does `CORE_API_TOKEN` match `VIDEOMIND_API_TOKEN`? A mismatch is a `401`, not a connection
+   error — the message will say `Invalid or missing X-Core-Token`.
+
+</Accordion>
+
+<Accordion title="/health shows storage.ok: false, status: degraded">
+
+Core cannot reach the Storage bucket. Reads still work; ingest will fail.
+
+- `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is wrong in `core/.env`.
+- The `videos` bucket does not exist. Create it once per project:
+
+```python
+from supabase import create_client
+create_client(URL, SERVICE_ROLE_KEY).storage.create_bucket("videos", options={"public": True})
+```
+
+- `VIDEOMIND_BUCKET` points at a bucket that is not there.
+
+The `error` field in the health response carries the underlying message.
+
+</Accordion>
+
+<Accordion title="A video is stuck on Analyzing">
+
+Usually normal. Indexing is genuinely slow — a five-minute video needs roughly 110 seconds for the
+boundary detectors alone, before a single vision call.
+
+Check `stage` on the row or the job to see what it is doing. If it has not moved in a long time,
+read core's logs: an analyzer failing loudly there is the usual cause.
+
+</Accordion>
+
+<Accordion title="A video failed with 'the analysis backend restarted before this video finished'">
+
+Exactly what it says. Jobs live in memory, so restarting core loses any job in flight.
+
+The row was failed on purpose rather than left waiting on a job that no longer exists. **Re-index**
+is the way out — and because ingest is idempotent on the content hash, any work that did complete
+before the restart is reused.
+
+</Accordion>
+
+<Accordion title="The agent says a video isn't searchable">
+
+Its status is not `ready`. That is the intended behaviour, not a bug: the agent is instructed to
+say a video is still being analysed rather than searching it and returning nothing.
+
+</Accordion>
+
+<Accordion title="The agent says it cannot answer that for this video">
+
+The video was analysed without the analyzer that question needs — no `people`, so no question
+about who was there; no `diarization` or `transcript`, so nothing to quote.
+
+Re-index with the missing analyzer. Re-running with the same chunking keeps everything that
+already ran and adds the new pass; aggregates then recompute automatically because the analyzer
+set changed.
+
+</Accordion>
+
+<Accordion title="Search returns nothing for something that is clearly in the video">
+
+In order of likelihood:
+
+1. **A `score_threshold` is set.** Correct matches routinely score 0.55–0.60, so a threshold
+   deletes them. Leave it unset unless you are testing for absence.
+2. **The wrong `analyzer`.** Appearance, clothing, actions and scenes are all `default_video` —
+   not `people`, which is a separate pass that may not have run.
+3. **The wrong `field`.** A chunk missing the requested field is excluded, not matched on empty
+   text.
+4. **Keywords instead of a phrase.** The query is matched semantically against the whole record;
+   full descriptive phrases beat keyword lists.
+5. **A filter.** Every filter is a hard `AND` against exact stored labels and can only remove
+   results.
+
+</Accordion>
+
+<Accordion title="Upload fails on a large file">
+
+Supabase caps uploads at 50 MB by default. Raise the bucket limit, or add the video by URL
+instead — that path never pushes the bytes through the browser or through core's process.
+
+`POST /videos` (multipart) has the same problem at the API level: it pushes the whole video
+through core's process and whatever body-size cap sits in front of it. `POST /videos/url` is the
+route for anything large.
+
+</Accordion>
+
+<Accordion title="An aggregate is missing">
+
+Check whether it was **skipped** rather than failed. An aggregator whose analyzer the video lacks
+is skipped by design:
+
+| Aggregate | Needs |
+|---|---|
+| `entities`, `entity_timelines`, `cooccurrence` | the `people` analyzer |
+| `speaker_stats`, `sentiment` | `diarization` |
+| `object_entities` | `object_detection` |
+
+The re-run response lists `skipped` separately from `failed` for exactly this reason.
+
+</Accordion>
+
+<Accordion title="Aggregates look out of date">
+
+They are cached, and reused unless forced. Pass `force=true` when testing a change to one, or you
+will be reading yesterday's output.
+
+The exception: when the analyzer set changes, everything is recomputed regardless — the response
+flags it as `recomputed_because_analyzers_changed`.
+
+</Accordion>
+
+<Accordion title="Changes to core seem to have no effect">
+
+On Windows, `pkill` does not reliably kill Python. A server that fails to bind exits quietly, so
+requests keep hitting the **old** process and you appear to be running stale code.
+
+<Tabs items={['PowerShell', 'bash']}>
+<Tab value="PowerShell">
+
+```powershell
+Get-NetTCPConnection -LocalPort 8077 -State Listen |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
+</Tab>
+<Tab value="bash">
+
+```bash
+lsof -ti:8077 | xargs kill -9
+```
+
+</Tab>
+</Tabs>
+
+Check the port first whenever changes seem not to apply.
+
+</Accordion>
+
+<Accordion title="diarization fails to load">
+
+Its pyannote model is gated. Accept the terms at
+[pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1),
+then set `HF_TOKEN` in `core/.env`.
+
+</Accordion>
+
+<Accordion title="A transcript contains text that was never spoken">
+
+Whisper hallucinates on non-speech audio. VAD filtering is on, which handles most of it. Language
+is detected once per video and pinned — per-segment detection produced fluent German from an
+English clip.
+
+Long stretches of music or room tone are the usual trigger.
+
+</Accordion>
+
+</Accordions>
+
+## Resetting
+
+Everything core writes lives under `core/data/`:
+
+<Tabs items={['bash', 'PowerShell']}>
+<Tab value="bash">
+
+```bash
+rm -rf core/data
+```
+
+</Tab>
+<Tab value="PowerShell">
+
+```powershell
+Remove-Item -Recurse -Force core/data
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="warn">
+  This deletes the analysis — records and vectors — not just the cache. Application rows survive
+  in Postgres, so afterwards those videos will show as `failed` and re-index is the recovery.
+
+  To clear only the regenerable part, delete `core/data/cache` instead. That costs a re-download
+  and nothing else.
+</Callout>
+
+## Environment notes
+
+These look like things to fix and are not:
+
+- **`USE_TF=0` is set before anything imports transformers.** Without it, transformers imports
+  TensorFlow — several seconds of startup and a wall of banners, for a backend nothing here uses.
+- **The torchcodec warning is filtered, not fixed.** Audio is decoded with PyAV and handed to
+  pyannote in memory, so torchcodec is never used.
+- **PaddleOCR was tried and removed.** It broke `cv2`, forced a torch import order, had no GPU
+  build for CUDA 13, and needed `enable_mkldnn=False` to run at all. EasyOCR replaced it.
+- **Python 3.13 with torch 2.11.0+cu130 is the tested combination.** Newer than most guides
+  assume, and it works.
+
+## Verifying against a live server
+
+Verify changes against a running server, not by reading code. Several bugs in this project —
+broken synthesis, stale ports, wrong media paths — only appeared over HTTP.

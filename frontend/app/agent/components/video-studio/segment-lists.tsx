@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Captions, Eye, MapPin, Play, Type } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRange, formatTimestamp } from '@/lib/videodb/format'
-import type { SceneSegment, TranscriptSegment } from '@/lib/videodb/types'
+import { formatRange, formatTimestamp } from '@/lib/core/format'
+import type { SceneSegment, TranscriptSegment } from '@/lib/core/types'
 
 /** Scroll a row into view when it becomes the selected/active one. */
 function useScrollIntoView(shouldScroll: boolean) {
@@ -285,7 +285,17 @@ function TranscriptRow({
         >
           {formatTimestamp(line.start)}
         </span>
-        <span className="text-[13px] leading-snug">{line.text}</span>
+        <span className="min-w-0 text-[13px] leading-snug">
+          {/* Only present when the video was analysed with `diarization` —
+              the plain transcript analyzer produces the same words with no
+              attribution, so this is absent rather than empty. */}
+          {line.speaker && (
+            <span className="mr-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {line.speaker.replace(/^SPEAKER_/, 'S')}
+            </span>
+          )}
+          {line.text}
+        </span>
       </button>
     </li>
   )

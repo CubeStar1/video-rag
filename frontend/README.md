@@ -43,6 +43,7 @@ Before setting up the frontend, ensure you have:
     XAI_API_KEY=""
     GROQ_API_KEY=""
     CEREBRAS_API_KEY=""
+    LMSTUDIO_BASE_URL="http://localhost:1234/v1"
 
     CICD_MCP_URL="http://localhost:8001/mcp"
     BACKEND_WORKFLOW_API_URL="http://localhost:8000"

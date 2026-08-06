@@ -14,9 +14,6 @@ class TranscriptAnalyzer:
     def analyze(self, chunks: Chunks, ctx: VideoContext) -> list[str]:
         waveform, sample_rate = ctx.audio()
 
-        # Detect language once over the whole track: Whisper re-detects per
-        # segment, and on a short or noisy span it picks the wrong one and
-        # emits fluent gibberish in it.
         language = self.language or whisper.detect_language(waveform, sample_rate, self.model_size)
 
         return [

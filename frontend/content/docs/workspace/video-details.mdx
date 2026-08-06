@@ -1,0 +1,71 @@
+---
+title: The video detail page
+description: Everything stored about one video — overview, chunks, speech, entities, and the raw record.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`/projects/{projectId}/videos/{videoId}` is the explorer for a single video. Where the chat
+answers questions, this page shows what the answers are made of.
+
+It loads from `GET /api/videos/{id}/details`, which returns the row, core's own metadata, every
+chunk with every analyzer's output attached, and every stored aggregate. Chunks are paged out of
+core 500 at a time and walked until core's `total` is satisfied — core paginates because an agent
+reading chunks wants a few; this page is the opposite case.
+
+<Callout type="info">
+  Sources settle independently. A video analysed without `people` has no `entities` aggregate; a
+  video mid-ingest has no chunks yet. Neither is a failure, and neither blanks the parts that did
+  load — per-source errors are listed and everything else still renders.
+</Callout>
+
+## Tabs
+
+### Overview
+
+The video-level picture: player, poster, duration, chunk count, the analyzers that ran, and the
+aggregates that exist. This is where `summary`, `chapters`, `events`, `stats` and `novelty` are
+rendered — tiered summaries with the finest tier first, chapters as titled spans, events as a
+timestamped list, stats as counts and extremes.
+
+### Chunks
+
+Every chunk in order, with each analyzer's output for it: the scene description and its facets,
+on-screen text, detected objects, and the people seen. This is the raw material of every search
+hit, shown unabridged.
+
+### Speech
+
+The transcript, attributed when the video was analysed with `diarization`. Alongside it,
+`speaker_stats` (talk time, turns, handovers, share per speaker) and `sentiment` when those
+aggregates ran.
+
+### Entities
+
+People linked across the whole video: each one's description, the narrative of what they did,
+first and last seen, appearance count, and dwell time from `entity_timelines`. `cooccurrence`
+shows which people appeared together.
+
+Only present when the video was analysed with `people`.
+
+### Raw
+
+The stored record as returned, for when you need to see exactly what an analyzer produced rather
+than a rendering of it.
+
+## Re-running aggregates
+
+The page can re-run video-level passes without re-analysing anything, through
+`POST /api/videos/{id}/aggregates`. Aggregators read stored analyzer output rather than the video,
+so this is the cheap half of re-processing.
+
+<Callout type="warn">
+  Five aggregators bill LLM calls — `summary`, `chapters`, `events`, `entities` and
+  `object_entities`. That is why re-running is a deliberate action rather than something the page
+  does on load.
+</Callout>
+
+## Deleting and re-indexing
+
+Both are available here as well as from the project grid, and behave identically — see
+[Adding videos](/docs/workspace/ingesting-video).

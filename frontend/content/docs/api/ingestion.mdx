@@ -1,0 +1,177 @@
+---
+title: Ingestion
+description: POST /videos and POST /videos/url — starting an analysis job from a file or a URL.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs'
+
+Both routes return **`202`** immediately, because ingestion takes minutes. They end the same way:
+the video lands in the Storage bucket under its content hash, and every response from then on
+carries a URL, never a path.
+
+---
+
+## `POST /videos`
+
+`multipart/form-data`. Upload a video file and start ingestion.
+
+### Fields
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `file` | file | *required* | The video |
+| `analyzers` | string | `default_video` | Comma-separated ids. Chosen per upload because costs differ wildly: `default_video` bills per chunk, `transcript` is free |
+| `mode` | string | `preset` | `preset` \| `weights` \| `interval` |
+| `preset` | string | `audio_video` | `mode=preset` only: `audio` \| `video` \| `audio_video` |
+| `speaker`, `silence`, `cut`, `semantic` | float | – | `mode=weights` only; at least one required |
+| `interval` | float | – | `mode=interval` only: seconds per chunk |
+| `min_duration` | float | `5` | Ignored when `mode=interval` |
+| `max_duration` | float | `20` | Ignored when `mode=interval` |
+
+### Example
+
+```bash
+curl -X POST http://127.0.0.1:8077/videos \
+  -H "X-Core-Token: $TOKEN" \
+  -F "file=@clip.mp4" \
+  -F "analyzers=default_video,diarization" \
+  -F "mode=preset" -F "preset=audio_video" \
+  -F "min_duration=5" -F "max_duration=20"
+```
+
+```json
+{ "job_id": "d9b16a609ab1", "status": "queued", "source": "clip.mp4" }
+```
+
+<Callout type="warn">
+  This route pushes the whole video through the API process and through whatever body-size cap
+  sits in front of it. Convenient for a browser or curl; for anything large, upload straight to
+  Storage and use `POST /videos/url` instead.
+</Callout>
+
+---
+
+## `POST /videos/url`
+
+`application/json`. Same fields, with `url` in place of `file`. **The primary path for a
+frontend.**
+
+### Body
+
+| Field | Type | Default |
+|---|---|---|
+| `url` | string | *required* |
+| `analyzers` | string | `default_video` |
+| `mode` | string | `preset` |
+| `preset` | string | `audio_video` |
+| `interval` | float \| null | `null` |
+| `speaker`, `silence`, `cut`, `semantic` | float \| null | `null` |
+| `min_duration` | float | `5` |
+| `max_duration` | float | `20` |
+
+### Example
+
+```bash
+curl -X POST http://127.0.0.1:8077/videos/url \
+  -H "X-Core-Token: $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "url": "https://example.com/clip.mp4",
+    "analyzers": "default_video,diarization",
+    "mode": "preset",
+    "preset": "audio_video"
+  }'
+```
+
+```json
+{ "job_id": "d9b16a609ab1", "status": "queued", "source": "https://example.com/clip.mp4" }
+```
+
+A URL that already points into core's own bucket needs no special case — the bytes still have to
+come down to be decoded, and the re-upload is skipped because the object is already there.
+
+<Callout type="info">
+  `video_id` is the hash of the bytes, so it does not exist until the download finishes. It
+  arrives in the job result along with `video_url`. Design your rows for that: create them before
+  the id exists, and fill it in from the job.
+</Callout>
+
+---
+
+## Chunking modes
+
+<Tabs items={['preset', 'weights', 'interval']}>
+
+<Tab value="preset">
+
+A named weighting of the four boundary signals.
+
+```json
+{ "url": "…", "mode": "preset", "preset": "video", "min_duration": 5, "max_duration": 20 }
+```
+
+| Preset | Suits |
+|---|---|
+| `audio` | Podcasts, calls, lectures |
+| `video` | Surveillance, silent footage, b-roll, sports |
+| `audio_video` | Most footage — interviews, meetings, edited video |
+
+</Tab>
+
+<Tab value="weights">
+
+Your own weighting. At least one signal is required.
+
+```json
+{ "url": "…", "mode": "weights", "speaker": 2, "silence": 1, "cut": 0.5 }
+```
+
+Only the ratios among signals that actually fire matter — weight given to a signal producing no
+events is redistributed.
+
+</Tab>
+
+<Tab value="interval">
+
+Fixed spans, no detectors.
+
+```json
+{ "url": "…", "mode": "interval", "interval": 20 }
+```
+
+`min_duration` and `max_duration` are **not** applied: you asked for exact spans, so you get
+exactly those.
+
+</Tab>
+
+</Tabs>
+
+See [Chunking](/docs/concepts/chunking) for what these actually do to retrieval quality.
+
+---
+
+## Re-ingesting
+
+There is no separate re-index endpoint. Ingest is **idempotent on the content hash**, so handing
+core the same source again re-analyses the same video in place.
+
+| Same source, and… | Result |
+|---|---|
+| same chunking, same analyzers | Existing output is reused; aggregates re-run with caching |
+| same chunking, new analyzers | New analyzers run and are added to the record; existing vectors untouched |
+| different chunking | Chunks are replaced; every vector for the video is dropped first |
+
+Aggregates recompute automatically whenever the analyzer set changed.
+
+---
+
+## Errors
+
+| Code | Cause |
+|---|---|
+| `400` | Unknown analyzer; mutually exclusive analyzers (`transcript` + `diarization`); unknown `mode`; a mode missing its required parameters; a non-`http(s)` URL |
+| `401` | Missing or wrong token |
+
+A URL that 404s, serves HTML instead of a video, or exceeds `VIDEOMIND_MAX_BYTES` fails the
+**job**, not the request — the download starts after the `202`. See [Errors](/docs/api/errors).

@@ -1,0 +1,40 @@
+\section{User Interface Design}
+
+The interface is organised around a single principle: the operator should never be
+required to scrub. Every screen terminates in a moment that plays.
+Figure~\ref{fig:ui} shows the four principal states of the application: the project
+workspace, the ingestion dialog, the agent chat with its clip reel and timeline studio,
+and the per-recording detail view.
+
+\optfigure{falcon-vqa-ui-design.png}{Operator interface. Clockwise from top left: the
+project workspace and video grid; the ingestion dialog, whose analyzer list is built
+from the analysis service's own capability endpoint; the per-recording detail view with
+its chunk map and tabbed record; and the agent chat with the clip reel artifact panel
+and the timeline studio.}{1.0}{fig:ui}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}X@{}}
+\toprule
+\textbf{Screen} & \textbf{Operator activity} \\
+\midrule
+Landing and documentation & Presents the system and hosts the full documentation: concepts, workspace guides, and the API reference. \\
+Authentication  & Registration and sign-in. Every subsequent route is guarded, and every query is restricted to the signed-in account. \\
+Projects        & Lists projects, each grouping a set of recordings. Opening one enters its workspace. \\
+Workspace       & Adds recordings by file or by link, selects the analyzers and the chunking mode, and observes each recording advance through Uploading, Indexing and Ready. Only ready recordings may be searched, and the interface states this rather than returning an empty result. \\
+Agent chat      & Accepts a description or a question, and a selection of recordings to consider. The assistant chooses the retrieval operations, and answers remain concise and cite timecodes. Conversations persist and may be resumed. \\
+Clip reel panel & Opens beside the chat whenever the results are moments. A player is placed above the list of moments; selecting one plays it, and they may be played consecutively as a reel. \\
+Timeline studio & Presents the recording's scenes, transcript and chapters against a timeline that follows the playhead, for reviewing what was indexed in the region being watched. \\
+Recording detail & Five tabs over one recording: Overview for the video-level output, Chunks for the chunk map and per-chunk records, Speech for the transcript, People and objects for linked entities and their timelines, and Record for the raw stored document. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Three decisions in the interface follow directly from the requirements. Progress is
+reported per recording rather than as a global spinner, so that a workspace with several
+recordings being processed at once remains legible (FR-3). A recording that is not yet
+ready is excluded from search with a stated reason instead of silently returning nothing,
+because an empty result and an unfinished index are different situations that look
+identical to the operator. And every result carries its timecode as the primary handle,
+since the timecode is what turns a search result into footage the operator can watch.

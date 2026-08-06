@@ -1,0 +1,204 @@
+---
+title: Installation
+description: The full local stack — core, Supabase, storage, and the Next.js app — with the reasoning behind each piece.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Files, File, Folder } from 'fumadocs-ui/components/files'
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs'
+
+## Requirements
+
+**core** needs Python 3.13, a CUDA GPU, and an OpenAI API key. It was developed against
+Python 3.13.6, torch 2.11.0+cu130 and an RTX 4060 (8 GB) — a newer combination than most guides
+assume, and one that works. Do not downgrade to "known good" versions without a measured reason.
+
+**frontend** needs Node 20+ and a Supabase project.
+
+Everything except the vision-language calls and answer synthesis runs locally: BGE embeddings,
+Qdrant (embedded), Whisper, pyannote, Silero VAD, PySceneDetect, CLIP, YOLO and EasyOCR.
+
+## Repository layout
+
+<Files>
+  <Folder name="core" defaultOpen>
+    <File name="serve.py" />
+    <Folder name="videomind">
+      <File name="paths.py" />
+      <File name="chunk.py" />
+      <Folder name="boundaries" />
+      <Folder name="chunking" />
+      <Folder name="analyzers" />
+      <Folder name="aggregators" />
+      <Folder name="extractors" />
+      <Folder name="vectordb" />
+      <Folder name="api" />
+      <File name="storage.py" />
+    </Folder>
+    <Folder name="data" />
+  </Folder>
+  <Folder name="frontend" defaultOpen>
+    <Folder name="app" />
+    <Folder name="lib" />
+    <Folder name="components" />
+    <Folder name="content" />
+  </Folder>
+</Files>
+
+`core/data/` holds every piece of runtime state — records, vectors, the video cache, downloaded
+model weights, and uploads. Deleting it is a full reset and costs nothing but re-work.
+
+## 1. core
+
+### Install
+
+```bash
+cd core
+pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 \
+    --index-url https://download.pytorch.org/whl/cu130
+pip install -r requirements.txt
+```
+
+`uv` works too — `uv sync` then `uv run python serve.py`.
+
+### Environment
+
+```bash title="core/.env"
+OPENAI_API_KEY=sk-...
+HF_TOKEN=hf_...
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+`HF_TOKEN` is only needed for `diarization`, and its model is gated — accept the terms at
+[pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+first, or the analyzer will fail at load time.
+
+### Storage bucket
+
+Video bytes live in a public Supabase Storage bucket named `videos`, created once per project:
+
+```python
+from supabase import create_client
+create_client(URL, SERVICE_ROLE_KEY).storage.create_bucket("videos", options={"public": True})
+```
+
+`GET /health` reports `status: "degraded"` and `storage.ok: false` when the key is wrong or the
+bucket is missing. Worth checking there rather than discovering it minutes into a background job.
+
+<Callout type="info">
+  Videos are **URLs outside, paths inside**. Every request and response speaks Storage URLs;
+  everything below `storage.py` gets a local path and does not know Storage exists. A video is
+  cached once under its content hash and every analysis pass runs against that local copy —
+  decoding straight from a URL would pay the network for what is meant to be a local seek.
+</Callout>
+
+### Run
+
+```bash
+python serve.py                    # API + web UI on http://127.0.0.1:8077
+python serve.py --api-only         # API only, no UI
+python serve.py --port 9000
+python serve.py --reload           # auto-restart on code changes
+python serve.py --host 0.0.0.0     # reachable from the LAN
+```
+
+Equivalent, invoking uvicorn directly:
+
+```bash
+python -m uvicorn videomind.api.app:app --port 8077
+VIDEOMIND_UI=0 python -m uvicorn videomind.api.app:app --port 8077   # API only
+```
+
+Use `--api-only` when the built-in UI is not wanted — behind another frontend, or for an MCP
+client that has no use for HTML. It drops the `/` route and nothing else.
+
+## 2. Database
+
+Run both migrations in the Supabase SQL editor:
+
+| File | Creates |
+|---|---|
+| `frontend/lib/supabase/migrations/schema.sql` | `projects`, `conversations`, `messages`, the `project-assets` bucket, `update_updated_at()`, RLS policies |
+| `frontend/lib/supabase/migrations/002_video_core.sql` | `video_core` — the application's view of a core-analysed video |
+
+`002_video_core.sql` is purely additive. The older `videos` table (from the VideoDB era) is left
+in place and is no longer read by anything.
+
+### The `video_core` table
+
+This is the join between the application's world and core's.
+
+| Column | Purpose |
+|---|---|
+| `project_id`, `user_id` | Ownership. RLS restricts every row to `auth.uid() = user_id` |
+| `title`, `source_type`, `storage_path`, `source_url` | Where the video came from |
+| `core_video_id` | Core's identity — `sha1(bytes)[:16]`. Null until core has downloaded the file |
+| `playback_url`, `poster_url`, `duration`, `size_bytes` | Written back from the ingest job result |
+| `status`, `job_id`, `stage`, `progress`, `error` | Ingest lifecycle, reconciled on every poll |
+| `ingest_config` | What the pipeline was asked for, replayed verbatim on re-index |
+| `analyzers`, `aggregates`, `chunk_config`, `chunk_count` | What it actually produced |
+
+<Callout type="warn">
+  `core_video_id` is unique **per project**, never globally: the same file uploaded to two
+  projects is one video in core. Deleting one project's row must not delete core's video while
+  another row still points at it — the delete route counts references first.
+</Callout>
+
+## 3. frontend
+
+```bash
+cd frontend
+npm install
+cp env.example .env.local
+npm run dev
+```
+
+The full variable list is in [Configuration](/docs/getting-started/configuration). At minimum
+you need the three Supabase values, one model provider key, and `CORE_API_URL`.
+
+## Verifying the install
+
+```bash
+curl http://127.0.0.1:8077/health
+```
+
+```json
+{
+  "status": "ok",
+  "ui": true,
+  "storage": { "ok": true, "bucket": "videos", "error": null },
+  "analyzers": ["default_video", "diarization", "object_detection", "ocr", "people", "transcript"],
+  "aggregators": ["chapters", "cooccurrence", "entities", "entity_timelines", "events",
+                  "ner", "novelty", "object_entities", "sentiment", "speaker_stats",
+                  "stats", "summary"]
+}
+```
+
+Then, from the frontend, sign in and open `/projects`. If the upload dialog's analyzer list
+populates, the frontend can reach core — that list is built from `GET /api/core/capabilities`,
+which proxies core's `/analyzers` and `/schema`.
+
+## Resetting
+
+Everything core writes lives under `core/data/`:
+
+<Tabs items={['bash', 'PowerShell']}>
+<Tab value="bash">
+
+```bash
+rm -rf core/data
+```
+
+</Tab>
+<Tab value="PowerShell">
+
+```powershell
+Remove-Item -Recurse -Force core/data
+```
+
+</Tab>
+</Tabs>
+
+Application rows survive in Postgres, so after a core reset the videos will show as `failed`
+with a message telling you to re-index. That is the intended recovery path.

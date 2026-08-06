@@ -1,0 +1,99 @@
+---
+title: Glossary
+description: The identifiers and objects the API speaks, and the traps in each.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+## `video_id`
+
+SHA-1 of the file's bytes, first 16 hex characters. **Content-derived, not the filename.**
+
+Two different files both called `test.mp4` stay separate, and re-uploading the same file is
+recognised as the same video rather than duplicated.
+
+<Callout type="warn">
+  Because it is a content hash, two callers who ingested the same bytes are referring to the
+  *same* video. Whoever owns the application-side rows has to decide nothing else still points at
+  it before deleting — core has no notion of who else is interested. The frontend's delete route
+  counts references in `video_core` before telling core to remove anything.
+</Callout>
+
+The id does not exist until the bytes have been downloaded, which is why ingest returns a job id
+rather than a video id, and why the row in `video_core` is created with `core_video_id` null.
+
+## `chunk_id`
+
+Position within one video's chunk list. **Not globally unique** — every video has a chunk 0, so
+always pair it with a `video_id`.
+
+It is also not stable across re-chunkings: chunk 12 of one run is a different moment than chunk 12
+of another. That is why vectors are keyed on `start`/`end` and `chunk_config` instead of position.
+
+## `chunk_config`
+
+Which chunking produced a vector.
+
+| Form | Meaning |
+|---|---|
+| `audio_video:5-20` | Preset `audio_video`, 5–20 second bounds |
+| `interval:10` | Fixed 10-second spans |
+| `custom-87e6230f:5-15` | Custom weights, hashed, with 5–15 second bounds |
+
+Vectors are keyed on it, so one video can hold several chunkings side by side and searches can be
+restricted to one. The hash on custom weights is load-bearing: without it two different weightings
+sharing a min/max would collide, and since point ids derive from this key the second ingest would
+silently overwrite the first.
+
+## `analyzer`
+
+One analysis pass, bundling its own frame sampling, prompt and output shape. See
+[Analyzers](/docs/concepts/analyzers). In vector payloads the field is called `extractor_id`,
+which is what the `analyzer_ids` filter maps onto.
+
+## `aggregator`
+
+One video-level pass over stored analyzer output. See [Aggregators](/docs/concepts/aggregators).
+
+## `field` / named vector
+
+Each chunk is one point carrying several vectors, one per part of its output. See
+[Retrieval](/docs/concepts/retrieval).
+
+## `job_id`
+
+A 12-character hex id for a background job. Ingest and aggregate re-runs both return one.
+
+<Callout type="warn">
+  **Jobs live in memory.** Restarting core loses job history; ingested vectors and records are on
+  disk and survive. The frontend handles this: a job that 404s is checked against core's video
+  list, and the row is either completed from the video itself or failed with a message pointing at
+  re-index.
+</Callout>
+
+## `record`
+
+The JSON file in `data/records/` holding everything known about one video: its chunk spans, every
+analyzer's output attached to each chunk, and every stored aggregate. Named for readability
+(`clip__95e110e2.json`) with the id in the filename so two videos with the same name cannot
+collide.
+
+Records are the read side of the system — `GET /videos/{id}/chunks` and
+`GET /videos/{id}/aggregates` both serve from them, so they cost nothing.
+
+## `detail`
+
+How much of a search hit comes back: `minimal`, `standard` or `full`. See
+[Retrieval](/docs/concepts/retrieval).
+
+## Application-side terms
+
+These exist in the frontend only; core has never heard of them.
+
+| Term | Meaning |
+|---|---|
+| **Project** | A workspace owning videos and conversations. Row in `projects`, scoped by RLS |
+| **Conversation** | One chat thread inside a project. Rows in `conversations` / `messages` |
+| **Video row** | A row in `video_core` — the application's view of a core video, plus ownership and ingest state |
+| **Clip** | A `(video_id, url, start, end)` tuple. Not a stream of its own: the panel loads the mp4 once and seeks |
+| **Artifact panel** | The right-hand surface that renders clip reels and long documents |

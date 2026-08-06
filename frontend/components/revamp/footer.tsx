@@ -23,15 +23,19 @@ const footerColumns: FooterColumn[] = [
   {
     label: 'Platform',
     links: [
-      { label: 'Workflows', href: '/projects' },
+      { label: 'Projects', href: '/projects' },
       { label: 'Agent Workspace', href: '/projects' },
     ],
   },
   {
     label: 'Resources',
     links: [
-      { label: 'Documentation', href: '/docs' },
-      { label: 'Getting Started', href: '/docs/getting-started' },
+      { label: 'Architecture', href: '/architecture' },
+      {
+        label: 'GitHub',
+        href: 'https://github.com/CubeStar1/video-chat',
+        external: true,
+      },
     ],
   },
 ]
@@ -112,10 +116,10 @@ export function Footer() {
 
           <div className="col-span-4 lg:col-span-8 lg:col-start-9 flex flex-col items-start lg:items-end text-left lg:text-right">
             <h2 className="text-4xl font-medium leading-[1.1] tracking-tight text-white md:text-5xl lg:text-6xl mb-8 lg:mb-12">
-              RPA
+              FalconVQA
             </h2>
             <p className="text-neutral-400 text-lg max-w-sm lg:max-w-md">
-              The AI-powered RPA assistant that generates, validates, and deploys your GitHub Actions automatically.
+              Retrieval-augmented generation for video — grounded answers, timecodes, and playable clips.
             </p>
           </div>
         </div>

@@ -77,7 +77,7 @@ class EventsAggregator:
         for event in result.get("events", []):
             chunk = by_id.get(event["chunk_id"])
             if chunk is None:
-                continue  # model invented a chunk id
+                continue
             events.append({**event, "start": chunk["start"], "end": chunk["end"]})
         events.sort(key=lambda e: e["start"])
 

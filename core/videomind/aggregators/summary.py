@@ -119,8 +119,6 @@ class SummaryAggregator:
                 "end": chunks[last]["end"],
             }
 
-        # Leaves come from chunk text; every tier above merges its children,
-        # so the whole-video summary is a reduction rather than one huge prompt.
         leaves = []
         for first, last in levels[-1]:
             text = complete(
@@ -151,12 +149,11 @@ class SummaryAggregator:
         body = "\n\n".join(f"[{s['start']:.0f}-{s['end']:.0f}s] {s['summary']}" for s in top)
         final = complete(FINAL_PROMPT.format(sections=body), schema=SCHEMA, model=self.model)
 
-        # Finest first, so `tiers[0]` is always the most detailed level.
         final["tiers"] = [
             {"level": i, "sections": level, "section_count": len(level)}
             for i, level in enumerate(hierarchy)
         ]
-        final["sections"] = hierarchy[0]  # finest, for retrieval
+        final["sections"] = hierarchy[0]
         final["depth"] = len(hierarchy)
         final["based_on"] = analyzers
         return final

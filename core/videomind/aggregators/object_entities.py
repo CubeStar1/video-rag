@@ -29,17 +29,12 @@ Do not claim it moved between places unless the sightings say so.
 
 {observations}"""
 
-# Things bolted to the room. Linking them is technically correct and practically
-# useless: "the checkout counter was present throughout" is true of every frame
-# and tells a search nothing. They are still counted, just not tracked.
 FIXTURE_WORDS = (
     "counter", "register", "conveyor", "shelf", "shelves", "shelving", "aisle",
     "display", "rack", "floor", "ceiling", "wall", "door", "window", "sign",
     "light", "monitor", "screen", "scanner", "terminal", "station", "lane",
 )
 
-# The object analyzer also describes people; those belong to the people
-# aggregator, which has clothing to identify them with.
 PERSON_WORDS = (
     "customer", "cashier", "shopper", "employee", "staff", "worker",
     "man", "woman", "person", "people", "child", "attendant",
@@ -164,7 +159,6 @@ class ObjectEntityAggregator:
             "unlinked": len(objects) - len(linked),
             "observations": len(observations),
             "narrated": narrated,
-            # Reported rather than tracked, so it is clear what was set aside.
             "fixtures": sorted(fixtures.items(), key=lambda kv: -kv[1])[:15],
             "people_sightings": sum(people.values()),
         }

@@ -92,7 +92,7 @@ export function LogoShowcase() {
         transition={{ duration: 0.5 }}
         className="max-w-5xl text-center text-xl font-medium leading-relaxed text-white"
       >
-        RPA supports models from the following providers
+        Bring your own model — FalconVQA supports these providers
       </motion.p>
 
       <motion.div

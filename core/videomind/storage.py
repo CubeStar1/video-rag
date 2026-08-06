@@ -1,25 +1,3 @@
-"""Video bytes live in Supabase Storage; the pipeline works on local files.
-
-This is the only module that knows both. Everything above it - the API, the
-record, the vector payload - speaks URLs, so a caller never sees a path on this
-machine. Everything below it - chunking, the analyzers, PyAV, OpenCV - is handed
-a local path and does not know Storage exists.
-
-Two doors in (`fetch_source` for a URL, `put_local` for a file already on disk)
-and one door back out (`local_path_for`). Both doors produce the same dict, so
-the ingest path does not branch on where a video came from.
-
-**Decode needs a real file.** `frames.py` seeks once per chunk then walks
-forward with `grab()`/`retrieve()`, and every analyzer re-opens the video; the
-seek penalty measured at ~22x is a local-disk number. Streaming the same access
-pattern over HTTPS would pay it to the network instead. So a video is downloaded
-once into a content-hash-keyed cache and every pass runs against that path.
-
-`video_id` is the sha1 of the bytes, which is why the download has to finish
-before the object's own name exists. Re-ingesting the same bytes therefore lands
-on the same id, the same object, and skips the upload.
-"""
-
 import hashlib
 import mimetypes
 import os
@@ -33,28 +11,19 @@ import httpx
 from dotenv import load_dotenv
 from supabase import create_client
 
+from . import youtube
 from .paths import CACHE_DIR, ensure as ensure_dirs
 
 load_dotenv()
 
 BUCKET = os.environ.get("VIDEOMIND_BUCKET", "videos")
 
-# A cap, not a quota: an unbounded server-side fetch of a caller-supplied URL is
-# how a disk fills up. Counted as the bytes land, because Content-Length is
-# advisory and absent on chunked responses.
 MAX_BYTES = int(os.environ.get("VIDEOMIND_MAX_BYTES", 4 * 1024**3))
 
-# Generous: a large video over a slow link is normal, and ingest already runs on
-# a background thread where nothing is waiting on the connection.
 TIMEOUT = httpx.Timeout(30.0, read=300.0)
 
 ALLOWED_SCHEMES = {"http", "https"}
 
-# Servers serve video under all three. `application/octet-stream` is what most
-# object stores return for an mp4 with no explicit type set, and an empty type
-# is what several CDNs send; refusing those would reject more real videos than
-# it would catch mistakes. The check is here to fail on an HTML error page
-# saved as a .mp4, not to be an authorisation boundary.
 ACCEPTED_TYPES = ("video/", "application/octet-stream", "application/mp4", "binary/octet-stream")
 
 
@@ -113,8 +82,6 @@ def _suffix_for(filename: str, content_type: str) -> str:
     suffix = Path(filename).suffix
     if suffix:
         return suffix
-    # A URL that ends in a route rather than a file - `/download/abc123` - still
-    # has to become something OpenCV will open by extension.
     return mimetypes.guess_extension(content_type or "") or ".mp4"
 
 
@@ -124,7 +91,6 @@ def _exists(storage_path: str) -> bool:
     try:
         return any(entry.get("name") == name for entry in _bucket().list(folder))
     except Exception:
-        # A listing failure is not evidence of absence; let the upload decide.
         return False
 
 
@@ -142,11 +108,28 @@ def _upload(local_path: Path, storage_path: str, content_type: str) -> None:
         raise StorageError(f"Upload to {BUCKET}/{storage_path} failed: {exc}") from exc
 
 
+def put_object(storage_path: str, data: bytes, content_type: str) -> str:
+    """Upload bytes already in memory and return their public URL.
+
+    `_upload` streams a file and skips objects that already exist, which is
+    right for video - re-ingesting the same bytes must not re-push gigabytes.
+    A poster is small and *should* be overwritten, because re-ingesting is how
+    you replace one that came out black.
+    """
+    try:
+        _bucket().upload(
+            storage_path, data, {"content-type": content_type, "upsert": "true"}
+        )
+    except Exception as exc:
+        raise StorageError(f"Upload to {BUCKET}/{storage_path} failed: {exc}") from exc
+    return public_url(storage_path)
+
+
 def _result(video_id: str, local_path: Path, storage_path: str, filename: str,
             source_url: str | None, size_bytes: int) -> dict:
     return {
         "video_id": video_id,
-        "local_path": str(local_path),   # internal only; never leaves the process
+        "local_path": str(local_path),
         "storage_path": storage_path,
         "video_url": public_url(storage_path),
         "filename": filename,
@@ -162,18 +145,23 @@ def fetch_source(url: str) -> dict:
     straight to Storage and handing over the link is the expected path. That
     needs no special case: the bytes still have to come down to be decoded, and
     `_exists` then skips the pointless re-upload.
+
+    A YouTube URL is the one exception, because a GET of it returns a player
+    page rather than a video. It is resolved to a file first and then rejoins
+    the local path; everything downstream still sees one shape.
     """
     scheme = urlparse(url).scheme.lower()
     if scheme not in ALLOWED_SCHEMES:
         raise ValueError(f"Unsupported URL scheme {scheme or '(none)'!r}; expected http or https")
 
+    if youtube.is_youtube(url):
+        with youtube.download(url, max_bytes=MAX_BYTES) as (path, filename):
+            return put_local(str(path), source_url=url, filename=filename)
+
     ensure_dirs()
     filename = _filename_from_url(url)
     digest, size = hashlib.sha1(), 0
 
-    # Downloaded under a dot-prefixed temporary name so a failed or half-written
-    # fetch can never be mistaken for a cache hit - the cache is keyed by a hash
-    # of the whole file, which does not exist until the whole file does.
     handle, tmp_name = tempfile.mkstemp(dir=CACHE_DIR, prefix=".download-")
     os.close(handle)
     tmp = Path(tmp_name)
@@ -206,7 +194,7 @@ def fetch_source(url: str) -> dict:
         suffix = _suffix_for(filename, content_type)
         local = CACHE_DIR / f"{video_id}{suffix}"
         if local.exists():
-            tmp.unlink()          # same bytes already cached
+            tmp.unlink()
         else:
             tmp.replace(local)
     except httpx.HTTPError as exc:
@@ -222,12 +210,16 @@ def fetch_source(url: str) -> dict:
     return _result(video_id, local, storage_path, filename, url, size)
 
 
-def put_local(path: str) -> dict:
+def put_local(path: str, source_url: str | None = None, filename: str | None = None) -> dict:
     """Same, for a file already on this machine - a multipart upload or a script.
 
     The file is copied into the cache rather than used where it lies, so that
     every video the pipeline touches is reachable by content hash alone and a
     caller's temporary file can be deleted the moment this returns.
+
+    `source_url` and `filename` exist for a caller that resolved a URL to a
+    file itself, as `fetch_source` does for YouTube: the file is named for an
+    opaque video id, and the record should still say where it came from.
     """
     source = Path(path)
     if not source.exists():
@@ -248,10 +240,10 @@ def put_local(path: str) -> dict:
     if not local.exists():
         shutil.copy2(source, local)
 
-    filename = _safe_name(source.name)
-    storage_path = f"{video_id}/{filename}"
-    _upload(local, storage_path, mimetypes.guess_type(source.name)[0] or "video/mp4")
-    return _result(video_id, local, storage_path, filename, None, size)
+    name = _safe_name(Path(filename).stem + suffix if filename else source.name)
+    storage_path = f"{video_id}/{name}"
+    _upload(local, storage_path, mimetypes.guess_type(name)[0] or "video/mp4")
+    return _result(video_id, local, storage_path, name, source_url, size)
 
 
 def local_path_for(video_id: str, storage_path: str | None = None) -> str:
@@ -282,13 +274,20 @@ def local_path_for(video_id: str, storage_path: str | None = None) -> str:
     return str(destination)
 
 
-def delete(storage_path: str) -> None:
-    """Remove an object. Nothing calls this yet - there is no delete endpoint -
-    but a video row that outlives its bytes is the failure it prevents."""
+def delete(storage_path: str | list[str]) -> None:
+    """Remove one or more objects.
+
+    Called by `DELETE /videos/{id}`, which has to take out the video and its
+    poster together - bytes that outlive their record are unreachable and
+    nothing else will ever collect them.
+    """
+    paths = [storage_path] if isinstance(storage_path, str) else list(storage_path)
+    if not paths:
+        return
     try:
-        _bucket().remove([storage_path])
+        _bucket().remove(paths)
     except Exception as exc:
-        raise StorageError(f"Could not delete {BUCKET}/{storage_path}: {exc}") from exc
+        raise StorageError(f"Could not delete {paths} from {BUCKET}: {exc}") from exc
 
 
 def status() -> dict:

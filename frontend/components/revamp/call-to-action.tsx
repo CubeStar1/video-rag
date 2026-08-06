@@ -45,17 +45,17 @@ export function CallToAction() {
 
           <div className="relative z-10 flex flex-col justify-center gap-6 p-8 md:p-16">
             <h2 className="text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
-              Ready to automate your pipelines?
+              Stop scrubbing. Start asking.
             </h2>
             <p className="text-neutral-400">
-              Join now and stop struggling with dense YAML configuration. Automate deployments faster.
+              Upload your first video and find the moment you need in seconds — no more dragging the playhead hoping to land on it.
             </p>
           </div>
 
           <div className="relative z-10 flex flex-col justify-center gap-px bg-white/5 border-l border-white/10">
             <SlideUpLink
               href="/projects"
-              label="Get Started Free"
+              label="Upload a Video"
               variant="primary"
               size="lg"
               className="flex-1 hover:bg-white/5"
@@ -64,8 +64,8 @@ export function CallToAction() {
             <div className="h-px w-full bg-white/10" />
 
             <SlideUpLink
-              href="/docs"
-              label="View Documentation"
+              href="/architecture"
+              label="Explore the Architecture"
               variant="primary"
               size="lg"
               className="flex-1 hover:bg-white/5"

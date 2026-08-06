@@ -1,11 +1,8 @@
 import numpy as np
 
-from .. import audio_extract
+from .. import audio_extract, poster
 from ..boundaries import diarization, scenes, semantic, vad
 
-# Relative importance of each signal per chunking preset. Each preset's
-# weights sum to 1.0; "audio" leans on pyannote/VAD, "video" leans on
-# PySceneDetect/CLIP, "audio_video" treats all four equally.
 WEIGHTS = {
     "audio": {"speaker": 0.35, "silence": 0.35, "cut": 0.15, "semantic": 0.15},
     "video": {"speaker": 0.15, "silence": 0.15, "cut": 0.35, "semantic": 0.35},
@@ -17,15 +14,28 @@ Chunks = list[tuple[float, float]]
 
 
 def collect_boundaries(video_path: str) -> tuple[BoundaryEvents, float]:
-    """Run all 4 detectors once and return their raw (time, strength) events."""
+    """Run all 4 detectors once and return their raw (time, strength) events.
+
+    Duration comes from the container, not from the waveform: a video may have
+    no audio track, and even when it has one the two lengths rarely match
+    exactly. On such a video the audio detectors are skipped rather than run on
+    silence - `vad.silence_boundaries` on no speech reports one boundary at the
+    midpoint of the whole clip, which is a fabricated signal, and `fuse`
+    renormalises over the detectors that fired anyway.
+    """
     waveform, sample_rate = audio_extract.extract_audio(video_path)
-    duration = len(waveform) / sample_rate
+    duration = poster.duration_of(video_path) or len(waveform) / sample_rate
+    if duration <= 0:
+        raise ValueError(f"Could not determine a duration for {video_path}")
 
-    annotation = diarization.diarize(waveform, sample_rate)
-    speaker_events = diarization.speaker_change_boundaries(annotation)
+    speaker_events: list[tuple[float, float]] = []
+    silence_events: list[tuple[float, float]] = []
+    if waveform.size:
+        annotation = diarization.diarize(waveform, sample_rate)
+        speaker_events = diarization.speaker_change_boundaries(annotation)
 
-    speech_segments = vad.detect_speech(waveform, sample_rate)
-    silence_events = vad.silence_boundaries(speech_segments, duration)
+        speech_segments = vad.detect_speech(waveform, sample_rate)
+        silence_events = vad.silence_boundaries(speech_segments, duration)
 
     scene_list = scenes.detect_cuts(video_path)
     cut_events = scenes.cut_boundaries(scene_list)
@@ -59,15 +69,6 @@ def fuse(
     picked greedily, strongest first, enforcing `min_gap` between accepted
     boundaries so we don't produce back-to-back tiny chunks.
     """
-    # Renormalise over the signals that actually fired. Not every video
-    # offers every signal - unbroken CCTV has no hard cuts, silent footage
-    # has no speaker turns - and against a fixed threshold the surviving
-    # signals would otherwise inherit whatever absolute weight the preset
-    # happened to give them. That turns the preset into a granularity dial:
-    # on single-signal footage "audio" and "video" produced 12 vs 63
-    # boundaries from identical content. Renormalised, a preset only
-    # expresses which signals matter, and collapses to the same result when
-    # the distinguishing ones are absent.
     active = {source for source, source_events in events.items() if source_events}
     total = sum(weights.get(source, 0.0) for source in active)
     if total > 0:

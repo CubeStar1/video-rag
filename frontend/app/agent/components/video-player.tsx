@@ -4,15 +4,13 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { AlertTriangle, ExternalLink } from 'lucide-react'
 import { createPlayer, selectError } from '@videojs/react'
 import { Video, VideoSkin, videoFeatures } from '@videojs/react/video'
-import { HlsJsVideo } from '@videojs/react/media/hlsjs-video'
 import { cn } from '@/lib/utils'
-import { toPlayerUrl } from '@/lib/videodb/format'
 
 /** One store definition, but `Provider` builds a fresh store per mounted player. */
-const Player = createPlayer({ features: videoFeatures, displayName: 'VideoDBPlayer' })
+const Player = createPlayer({ features: videoFeatures, displayName: 'CoreVideoPlayer' })
 
 export interface VideoPlayerHandle {
-  /** Jump to a position (seconds) in the currently loaded stream. */
+  /** Jump to a position (seconds) in the loaded video. */
   seekTo: (seconds: number) => void
   play: () => void
   pause: () => void
@@ -21,40 +19,65 @@ export interface VideoPlayerHandle {
 }
 
 interface VideoPlayerProps {
-  streamUrl: string | null | undefined
+  /** An mp4 — either a whole video, or a `blob:` URL for a clip cut out of one. */
+  src: string | null | undefined
   poster?: string | null
+  /**
+   * Play only this span of `src`. The player seeks here on load and stops (or
+   * loops) at the end. Leave unset when `src` is already just the clip.
+   */
+  range?: [number, number] | null
+  loopRange?: boolean
   autoPlay?: boolean
   className?: string
   /** Fires on `timeupdate` and, while playing, once per animation frame. */
   onTimeUpdate?: (seconds: number) => void
   onDurationChange?: (seconds: number) => void
   onPlayingChange?: (isPlaying: boolean) => void
+  /** Fires when a bounded range — or an unbounded source — plays to its end. */
+  onRangeEnd?: () => void
 }
 
-const isHls = (url: string) => /\.m3u8(\?|#|$)/i.test(url)
-
 /**
- * Player for VideoDB streams, built on the Video.js v10 React skin. HLS runs
- * through hls.js; anything else falls back to the plain media element. A stream
- * the browser cannot play at all falls back to the VideoDB console player.
+ * Player for core's mp4s, on the Video.js v10 React skin.
+ *
+ * Everything HLS is gone: core serves one plain mp4 per video and Supabase
+ * Storage honours `Range`, so seeking to a moment is a byte-range request
+ * rather than a manifest fetch. That also means a clip costs no extra load —
+ * the same element seeks within the file it already has buffered.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   function VideoPlayer(
     {
-      streamUrl,
+      src,
       poster,
+      range,
+      loopRange = false,
       autoPlay = false,
       className,
       onTimeUpdate,
       onDurationChange,
       onPlayingChange,
+      onRangeEnd,
     },
     ref
   ) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [failed, setFailed] = useState(false)
 
-    useEffect(() => setFailed(false), [streamUrl])
+    /**
+     * The skin is client-only.
+     *
+     * Its seek slider labels itself with a formatted duration, which the server
+     * renders as `" of "` and the browser as `"0 seconds of 0 seconds"` — a
+     * hydration mismatch React refuses to patch. Nothing here can render
+     * meaningfully server-side anyway (there is no media element to read), so
+     * the player is mounted after hydration and a poster stands in until then.
+     */
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => setMounted(true), [])
+
+    useEffect(() => setFailed(false), [src])
 
     useImperativeHandle(ref, () => ({
       seekTo: (seconds: number) => {
@@ -120,9 +143,55 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         video.removeEventListener('pause', handleStop)
         video.removeEventListener('ended', handleStop)
       }
-    }, [onTimeUpdate, onDurationChange, onPlayingChange, streamUrl, failed])
+    }, [onTimeUpdate, onDurationChange, onPlayingChange, src, failed])
 
-    if (!streamUrl) {
+    // Range enforcement. A clip is a span of the whole file, so nothing stops
+    // playback at its end but this: seek in on load, and pull back (or stop) at
+    // the boundary. Kept separate from the reporting effect above so changing
+    // clips does not tear down the listeners that drive the timeline.
+    const start = range?.[0]
+    const end = range?.[1]
+    useEffect(() => {
+      const video = videoRef.current
+      if (!video) return
+
+      // A source that is already only the clip — a cut blob — needs no guard:
+      // its natural end *is* the range end, so `ended` carries the same meaning.
+      if (start === undefined || end === undefined) {
+        const handleEnded = () => onRangeEnd?.()
+        video.addEventListener('ended', handleEnded)
+        return () => video.removeEventListener('ended', handleEnded)
+      }
+
+      const enterRange = () => {
+        // Only pull the playhead in when it is outside the clip, so a user who
+        // deliberately scrubbed within it is not fought by this.
+        if (video.currentTime < start || video.currentTime > end) {
+          video.currentTime = start
+        }
+      }
+
+      const guard = () => {
+        if (video.currentTime < end) return
+        if (loopRange) {
+          video.currentTime = start
+          return
+        }
+        video.pause()
+        onRangeEnd?.()
+      }
+
+      if (video.readyState >= 1) enterRange()
+      video.addEventListener('loadedmetadata', enterRange)
+      video.addEventListener('timeupdate', guard)
+
+      return () => {
+        video.removeEventListener('loadedmetadata', enterRange)
+        video.removeEventListener('timeupdate', guard)
+      }
+    }, [start, end, loopRange, onRangeEnd, src])
+
+    if (!src) {
       return (
         <div
           className={cn(
@@ -130,13 +199,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             className
           )}
         >
-          No stream available
+          No video available
+        </div>
+      )
+    }
+
+    if (!mounted) {
+      return (
+        <div className={cn('relative aspect-video overflow-hidden bg-black', className)}>
+          {poster && (
+            // eslint-disable-next-line @next/next/no-img-element -- same source the skin uses for its poster
+            <img src={poster} alt="" className="size-full object-cover opacity-80" />
+          )}
         </div>
       )
     }
 
     if (failed) {
-      const fallback = toPlayerUrl(streamUrl)
       return (
         <div
           className={cn(
@@ -146,24 +225,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         >
           <AlertTriangle className="size-6 text-amber-500" />
           <p className="text-sm text-muted-foreground">
-            This browser could not play the stream inline.
+            This browser could not play the video inline.
           </p>
-          {fallback && (
-            <a
-              href={fallback}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              <ExternalLink className="size-3.5" />
-              Open in VideoDB player
-            </a>
-          )}
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+          >
+            <ExternalLink className="size-3.5" />
+            Open the file directly
+          </a>
         </div>
       )
     }
-
-    const Media = isHls(streamUrl) ? HlsJsVideo : Video
 
     return (
       <div
@@ -177,7 +252,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             poster={poster ?? undefined}
             className="size-full [--media-border-radius:0px]"
           >
-            <Media ref={videoRef} src={streamUrl} autoPlay={autoPlay} playsInline />
+            <Video ref={videoRef} src={src} autoPlay={autoPlay} playsInline preload="metadata" />
             <ErrorWatcher onFail={setFailed} />
           </VideoSkin>
         </Player.Provider>
@@ -187,8 +262,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 )
 
 /**
- * The skin renders its own error dialog, but a stream this browser simply cannot
- * decode should hand the user off to the VideoDB console player instead.
+ * The skin renders its own error dialog, but a file this browser cannot decode
+ * should offer the raw URL — core's bucket is public, so the link always works
+ * even when the embedded player does not.
  */
 function ErrorWatcher({ onFail }: { onFail: (failed: boolean) => void }) {
   const error = Player.usePlayer(selectError)?.error

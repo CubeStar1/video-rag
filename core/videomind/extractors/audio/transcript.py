@@ -37,9 +37,6 @@ def transcribe_segment(
         return ""
 
     model = _get_model(model_size)
-    # vad_filter drops non-speech audio before decoding. Without it Whisper
-    # invents plausible-sounding dialogue out of ambient noise (engine hum,
-    # music, room tone) rather than returning nothing.
     segments, _info = model.transcribe(
         segment, beam_size=5, vad_filter=True, language=language
     )
@@ -76,7 +73,10 @@ def transcribe_segments(
 
 
 def detect_language(waveform: np.ndarray, sample_rate: int, model_size: str = "tiny") -> str | None:
-    """Detect the language once over the whole audio."""
+    """Detect the language once over the whole audio, or None if there is none."""
+    if waveform.size == 0:
+        return None
+
     model = _get_model(model_size)
     _segments, info = model.transcribe(waveform, beam_size=1, vad_filter=True)
     return info.language

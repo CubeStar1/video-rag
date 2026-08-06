@@ -1,0 +1,74 @@
+---
+title: Projects and workspaces
+description: How videos, conversations and clips are grouped, and what each surface in the app does.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A **project** is the unit of scope. It owns its videos and its conversations, and nothing crosses
+between projects — an agent answering in one project can only reach videos in that project.
+
+## Creating one
+
+`/projects` lists everything you own. **New Project** takes a name and an optional description,
+creates the project and its first conversation in one call, and drops you into the workspace.
+
+Row-level security on `projects`, `conversations`, `messages` and `video_core` restricts every
+row to `auth.uid() = user_id`, so the listing is scoped by the database rather than by a query
+filter that could be forgotten.
+
+## The workspace
+
+`/projects/{projectId}` is the project home:
+
+- **The prompt box** — "Describe a moment, ask a question, or request a clip." Submitting creates
+  a new conversation with every ready video pre-tagged and opens the chat.
+- **Suggestion cards** — starter prompts that do the same thing.
+- **The media grid** — one card per video, showing its poster, duration, status pill, and the
+  analyzers that ran.
+
+<Callout type="info">
+  Asking a question before any video is ready is refused with a toast rather than sent — the agent
+  would have nothing to retrieve from, and an answer built on nothing is worse than a prompt to
+  wait.
+</Callout>
+
+### Video cards
+
+Each card shows a status pill moving through `Pending` → `Queued` → `Analyzing` → `Ready`, or
+`Failed`. The grid polls while anything is in flight, and every poll reconciles the row against
+core's job — core analyses on a background thread and pushes nothing, so the client's existing
+poll is where progress is discovered.
+
+The card menu offers:
+
+| Action | What it does |
+|---|---|
+| **Open** | The video detail page — every chunk, every aggregate |
+| **Re-index** | Re-runs ingestion, optionally with a different config |
+| **Delete** | Removes the row, and core's copy if nothing else references it |
+
+## Conversations
+
+`/projects/{projectId}/conversations` lists the project's chats; each opens at
+`/conversations/{conversationId}`. New conversations are titled from the first user message.
+
+Messages are persisted per turn — the user's message on arrival, the assistant's on completion —
+so a refresh mid-stream loses nothing already produced.
+
+## Navigation
+
+| Route | Purpose |
+|---|---|
+| `/` | Landing page |
+| `/signin`, `/register` | Supabase auth |
+| `/projects` | Project list |
+| `/projects/{id}` | Workspace: prompt box and media grid |
+| `/projects/{id}/conversations` | Conversation list |
+| `/projects/{id}/conversations/{id}` | Agent chat with the artifact panel |
+| `/projects/{id}/videos/{id}` | Video detail: overview, chunks, speech, entities, raw |
+| `/architecture` | An illustrated walkthrough of the system |
+| `/docs` | These docs |
+
+Auth-guarded routes redirect to `/signin` through Supabase middleware; the session is refreshed on
+every matching request.

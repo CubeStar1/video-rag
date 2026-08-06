@@ -1,0 +1,120 @@
+---
+title: Jobs
+description: GET /jobs and GET /jobs/{job_id} — polling background work and reading its result.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Ingestion and aggregate re-runs both execute on a worker thread and report progress on a job.
+Poll until `status` is `done` or `failed`.
+
+---
+
+## `GET /jobs/{job_id}`
+
+```json
+{
+  "job_id": "d9b16a609ab1",
+  "status": "running",
+  "stage": "analyzing",
+  "detail": { "analyzer": "default_video" },
+  "result": null,
+  "error": null,
+  "created_at": "2026-08-05T18:04:02+00:00",
+  "updated_at": "2026-08-05T18:04:19+00:00"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `status` | `queued` → `running` → `done` \| `failed` |
+| `stage` | Where in the pipeline it is |
+| `detail` | Stage context, e.g. `{"chunks": 39}` or `{"analyzer": "transcript"}` |
+| `result` | The result object once `done`; `null` before that |
+| `error` | `"TypeName: message"` when `failed`, else `null` |
+| `created_at`, `updated_at` | ISO 8601, second precision, UTC |
+
+### Stages
+
+| Stage | What is happening |
+|---|---|
+| `starting` | The worker thread has picked the job up |
+| `fetching` | Downloading the source and hashing it |
+| `chunking` | Running the four boundary detectors and fusing them |
+| `chunked` | Boundaries settled — `detail` carries `{"chunks": n}` |
+| `analyzing` | An analyzer is running — `detail` carries `{"analyzer": id}` |
+| `indexing` | Writing vectors for that analyzer |
+| `aggregating` | A video-level pass is running — `detail` carries `{"aggregator": id}` |
+| `complete` | Done |
+
+Analyzers run one at a time, so `analyzing` and `indexing` alternate once per selected analyzer.
+
+### Ingest result
+
+```json
+{
+  "video_id": "95e110e25070fcfc",
+  "video_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/clip.mp4",
+  "poster_url": "https://<project>.supabase.co/storage/v1/object/public/videos/95e110e25070fcfc/poster.jpg",
+  "storage_path": "95e110e25070fcfc/clip.mp4",
+  "filename": "clip.mp4",
+  "duration": 300.4,
+  "size_bytes": 48213402,
+  "chunk_config": "audio_video:5-20",
+  "chunks": 39,
+  "analyzers": ["default_video", "diarization"],
+  "indexed": { "default_video": 39, "diarization": 31 },
+  "aggregated": {
+    "ran": ["stats", "novelty", "summary", "chapters", "events", "ner"],
+    "reused": [],
+    "aggregates": ["chapters", "events", "ner", "novelty", "stats", "summary"]
+  }
+}
+```
+
+<Callout type="info">
+  `indexed` counts vectors written per analyzer. A zero is normal, not an error — a silent video
+  produces no transcript text, so there is nothing to embed.
+</Callout>
+
+If aggregation fails as a whole, `aggregated` carries `{"error": "…"}` instead; the ingest itself
+still succeeded and the video is searchable.
+
+### Aggregate re-run result
+
+A job started by `POST /videos/{video_id}/aggregates` resolves to the shape documented in
+[Aggregates](/docs/api/aggregates) — `ran`, `reused`, `skipped`, `failed`, `aggregates`,
+`llm_calls_saved`, `recomputed_because_analyzers_changed`.
+
+The two are distinguishable by the presence of `video_url`, which only an ingest result has.
+
+---
+
+## `GET /jobs`
+
+Every job this process has seen.
+
+```json
+{ "jobs": [ { "job_id": "d9b16a609ab1", "status": "done", "…": "…" } ] }
+```
+
+---
+
+## Polling strategy
+
+Ingestion takes minutes — as a reference point, a five-minute video needs roughly 110 seconds for
+the boundary detectors alone. A poll every few seconds is plenty.
+
+<Callout type="warn">
+  **Jobs live in memory.** Restarting core loses job history; the vectors and records it produced
+  are on disk and survive.
+
+  A poll that suddenly returns `404` therefore does **not** mean the ingest failed. Check
+  `GET /videos/{video_id}` — if the video is there, it finished before the restart and the row can
+  be completed from the video itself. Only if it is absent is the work genuinely lost, and the
+  recovery is to re-ingest.
+</Callout>
+
+The reference client implements exactly this recovery, and it is the reason a restart mid-ingest
+surfaces as "the analysis backend restarted before this video finished. Re-index to try again."
+rather than a row stuck on `analyzing` forever.

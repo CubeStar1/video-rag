@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  BookOpen,
   Captions,
   Crosshair,
   Film,
@@ -19,14 +20,15 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { formatDuration } from '@/lib/videodb/format'
+import { formatDuration } from '@/lib/core/format'
 import { useProjectVideos } from '@/hooks/use-project-videos'
 import { useVideoTimeline } from '@/hooks/use-video-timeline'
 import { useAgentStore } from '@/app/agent/store/agent-store'
 import { VideoPlayer, type VideoPlayerHandle } from '@/app/agent/components/video-player'
 import { StudioTimeline } from './studio-timeline'
 import { SceneList, TranscriptList } from './segment-lists'
-import type { SceneSegment, TranscriptSegment } from '@/lib/videodb/types'
+import { ChapterList } from './chapter-list'
+import type { SceneSegment, TranscriptSegment } from '@/lib/core/types'
 
 interface VideoStudioPanelProps {
   projectId?: string
@@ -46,8 +48,10 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
 
   const { videos, isLoading: videosLoading } = useProjectVideos(projectId ?? '')
 
+  // Playable means core finished with it and left an mp4 behind — a row still
+  // being analysed has a title and nothing to play.
   const playable = useMemo(
-    () => videos.filter((video) => video.videodb_video_id),
+    () => videos.filter((video) => video.core_video_id && video.playback_url),
     [videos]
   )
 
@@ -63,7 +67,7 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
     setActiveVideo(fallback.id)
   }, [activeVideo, playable, setActiveVideo])
 
-  const { timeline, scenes, transcript, isLoading, isFetching, refetch, error } =
+  const { timeline, scenes, transcript, chapters, events, isLoading, isFetching, refetch, error } =
     useVideoTimeline(activeVideo?.id)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -112,8 +116,8 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
     if (!seekRequest || seekRequest.nonce === handledSeek.current) return
     handledSeek.current = seekRequest.nonce
 
-    const target = seekRequest.videodbVideoId
-      ? playable.find((video) => video.videodb_video_id === seekRequest.videodbVideoId)
+    const target = seekRequest.coreVideoId
+      ? playable.find((video) => video.core_video_id === seekRequest.coreVideoId)
       : activeVideo
 
     if (!target) return
@@ -221,8 +225,8 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
         <VideoPlayer
           ref={playerRef}
           key={activeVideo?.id}
-          streamUrl={activeVideo?.stream_url}
-          poster={activeVideo?.thumbnail_url}
+          src={activeVideo?.playback_url}
+          poster={activeVideo?.poster_url}
           className="mx-auto max-h-[45vh] w-full rounded-none"
           onTimeUpdate={handleTimeUpdate}
           onDurationChange={handleDurationChange}
@@ -256,6 +260,13 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
               <Captions className="size-3.5" />
               Transcript
               <span className="tabular-nums text-muted-foreground">{transcript.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="chapters" className="gap-1.5 text-xs">
+              <BookOpen className="size-3.5" />
+              Chapters
+              <span className="tabular-nums text-muted-foreground">
+                {chapters.length || events.length}
+              </span>
             </TabsTrigger>
           </TabsList>
 
@@ -293,6 +304,15 @@ export function VideoStudioPanel({ projectId }: VideoStudioPanelProps) {
             transcript={transcript}
             currentTime={currentTime}
             followPlayhead={follow}
+            onSeek={seek}
+          />
+        </TabsContent>
+
+        <TabsContent value="chapters" className="min-h-0 flex-1 overflow-y-auto">
+          <ChapterList
+            chapters={chapters}
+            events={events}
+            currentTime={currentTime}
             onSeek={seek}
           />
         </TabsContent>

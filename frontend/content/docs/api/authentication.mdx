@@ -1,0 +1,62 @@
+---
+title: Authentication
+description: The shared-secret header, which routes it guards, and what it deliberately does not do.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Core authenticates with a **shared secret**, checked on every route that reads or writes a video.
+
+```bash
+curl http://127.0.0.1:8077/videos \
+  -H "X-Core-Token: $VIDEOMIND_API_TOKEN"
+```
+
+Set `VIDEOMIND_API_TOKEN` in core's environment. Unset means **open**, which is the right default
+for a machine-local dev server and the wrong one for anything reachable: without it, whoever can
+open the port has the whole corpus.
+
+## Open paths
+
+These stay reachable without the token, so a deployment can be checked and explored:
+
+| Path | Why |
+|---|---|
+| `/health` | Liveness must work for a load balancer |
+| `/docs`, `/redoc`, `/openapi.json` | The API definition |
+| `/` | The built-in UI, which has no way to send a header |
+
+Everything else returns `401`:
+
+```json
+{ "detail": "Invalid or missing X-Core-Token" }
+```
+
+<Callout type="warn">
+  **This is not an authorisation model.** There are no users in core, no projects, and no
+  row-level security — one token grants the whole corpus. It is the boundary that stops the port
+  from being one.
+</Callout>
+
+## Building multi-tenant on top
+
+Core is single-tenant by design. Every deployment that serves more than one customer puts an
+application layer in front, and that layer owns:
+
+1. **Identity** — who is calling.
+2. **Ownership** — which `video_id` values that caller may touch. Store them; core will not.
+3. **Explicit scoping** — pass `video_ids` on every `/query` and `/ask` call. Omitting it searches
+   *everything in the install*.
+4. **Delete safety** — `video_id` is a content hash, so two tenants who uploaded the same bytes
+   share one video. Count references before calling `DELETE /videos/{video_id}`.
+
+The reference implementation of exactly this is in
+[Building a client](/docs/api/client-integration): rows in Postgres with RLS, a single scope
+resolver every tool passes through, and core called only ever with explicit ids.
+
+## Deployment checklist
+
+- [ ] `VIDEOMIND_API_TOKEN` set, and matching `CORE_API_TOKEN` in the client.
+- [ ] Core's port not publicly routable — the application layer is the only client that needs it.
+- [ ] `--api-only` if the built-in UI is not wanted; `/` is open whenever it is enabled.
+- [ ] The token held server-side only. A browser that can send it can read every video.

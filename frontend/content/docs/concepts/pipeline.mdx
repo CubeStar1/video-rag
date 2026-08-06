@@ -1,0 +1,116 @@
+---
+title: The pipeline
+description: What happens between "upload" and "ready" — five stages, what each one costs, and what it writes.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Cards, Card } from 'fumadocs-ui/components/card'
+
+Ingestion is one background job with five stages. Each reports progress on the job, so a client
+polling `GET /jobs/{job_id}` can show exactly where a video is.
+
+```
+fetching ─▶ chunking ─▶ analyzing ─▶ indexing ─▶ aggregating ─▶ complete
+```
+
+## 1. Fetching
+
+The source — an `http(s)` URL or a local path — is resolved to a cached local file plus its
+Storage identity. Both forms come out the same shape, because a URL and a path are the same
+thing to everything downstream.
+
+The file's content hash becomes the **video id**: `sha1(bytes)[:16]`. Not the filename — two
+different uploads both called `test.mp4` would otherwise merge into one video's vectors.
+
+This stage is reported first because a slow download of a large video is the one stage that can
+run for minutes with nothing to show for it.
+
+A poster frame is extracted and written to the bucket before chunking, so a client can render
+the video as soon as it is decodable rather than waiting for analysis to finish. Poster
+extraction is never fatal: a video that analysed fine must not fail its ingest because a
+thumbnail could not be written.
+
+## 2. Chunking
+
+Four boundary detectors run over the video, their events are fused under a weighting, and the
+resulting cut points become chunks. Three modes are available — a named preset, your own
+weights, or a fixed interval.
+
+See [Chunking](/docs/concepts/chunking) for how the fusion works and which preset suits which
+footage.
+
+## 3. Analyzing
+
+Every selected analyzer runs over every chunk, in turn. Each analyzer owns its own frame
+sampling, prompt and output shape, so adding one requires no change to ingest, the vector store,
+or the API.
+
+Analyzers are chosen **per upload** because their costs differ wildly: `default_video` bills a
+vision call per chunk; `transcript` is free.
+
+See [Analyzers](/docs/concepts/analyzers).
+
+## 4. Indexing
+
+Each chunk becomes one point in Qdrant carrying several **named vectors** — one per part of its
+output — so a query about appearance can be compared against a short person description rather
+than competing with a whole record.
+
+Embeddings come from `BAAI/bge-small-en-v1.5`, running locally.
+
+The vector's identity is derived from `video_id | analyzer | start | end | chunk_config`, so
+re-ingesting the same chunk upserts instead of duplicating. Keying on the time span rather than a
+positional index matters: chunk 12 of one chunking run is a different moment than chunk 12 of
+another, so a positional id would silently rebind a vector to the wrong timeframe.
+
+See [Retrieval](/docs/concepts/retrieval).
+
+## 5. Aggregating
+
+Twelve video-level passes run over the analyzer output that was just written — not over the
+video. That is what makes re-summarising cheap: nothing has to be re-analysed.
+
+Results are cached and reused unless forced, because five of the twelve bill LLM calls. They are
+recomputed automatically when the analyzer set changes: a summary written before `people` ran
+describes a video it could not see people in, and serving it would be confidently out of date.
+
+See [Aggregators](/docs/concepts/aggregators).
+
+## What gets written
+
+| Where | What | Regenerable |
+|---|---|---|
+| Supabase Storage | The video, under `{video_id}/{filename}`, plus `{video_id}/poster.jpg` | No |
+| `data/records/` | One JSON record per video: chunk spans, every analyzer's output, every aggregate | No — this is the analysis |
+| `data/vectordb/` | Qdrant points, one per chunk per analyzer, with five named vectors | Rebuildable from records |
+| `data/cache/` | The decoded local copy, keyed by content hash | Yes — costs a re-download |
+
+## Re-running
+
+Ingest is **idempotent on the content hash**, which is why there is no separate re-index
+endpoint: handing core the same source URL again re-analyses the same video in place.
+
+| You change | What happens |
+|---|---|
+| Nothing | Analyzers that already ran keep their output; requested new ones are added |
+| The analyzer set | New analyzers run; existing vectors for other analyzers are untouched; all aggregates recompute |
+| The chunking | Chunk boundaries change, so every old vector for the video is dropped — they no longer describe anything that exists |
+
+<Callout type="info">
+  Aggregators can be re-run on their own with `POST /videos/{video_id}/aggregates`. Since they
+  read stored analyzer output rather than the video, that costs no re-analysis at all — only the
+  LLM calls for the five that need them.
+</Callout>
+
+## Timing
+
+Ingestion takes minutes, which is why every ingest route returns `202` and a job id rather than
+holding the connection open. As a reference point: a five-minute video needs roughly 110 seconds
+for the boundary detectors alone, before a single vision call is made.
+
+<Cards>
+  <Card title="Chunking" href="/docs/concepts/chunking" description="Four signals, three modes, and why weights renormalise." />
+  <Card title="Analyzers" href="/docs/concepts/analyzers" description="The six per-chunk passes and what each produces." />
+  <Card title="Aggregators" href="/docs/concepts/aggregators" description="Twelve video-level passes and their dependencies." />
+  <Card title="Retrieval" href="/docs/concepts/retrieval" description="Named vectors, filters, detail levels, query vs ask." />
+</Cards>

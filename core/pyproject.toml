@@ -11,6 +11,7 @@ dependencies = [
     "faster-whisper==1.2.1",
     "gliner==0.2.28",
     "numpy==2.3.5",
+    "nvidia-cublas-cu12>=12.9.2.10",
     "open-clip-torch==3.3.0",
     "openai==2.48.0",
     "opencv-python==4.13.0.92",
@@ -32,11 +33,19 @@ dependencies = [
     "transformers==4.57.2",
     "ultralytics==8.4.41",
     "uvicorn==0.44.0",
+    "yt-dlp>=2026.7.4",
 ]
 
 # torch/torchaudio/torchvision come from PyTorch's CUDA 13.0 index on Linux and
 # Windows (PyPI's Windows wheels are CPU-only). macOS has no CUDA builds, so it
 # falls back to PyPI.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Importing the package pulls in torch, pyannote and open-clip, which is slow
+# but happens once per session. Nothing here loads an embedding model or opens
+# a video; the cases that need a GPU and a live provider are the manual ones.
+addopts = "-q --strict-markers"
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
 torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
@@ -46,3 +55,8 @@ torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux' or s
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
 explicit = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

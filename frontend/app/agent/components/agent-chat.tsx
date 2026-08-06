@@ -20,12 +20,13 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { FilmIcon, PanelLeftIcon } from "lucide-react";
+import { FilmIcon, PanelLeftIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { generateUUID } from "@/app/agent/lib/utils/generate-uuid";
 import { useModelSelection } from "@/app/agent/hooks/use-model-selection";
 import { ModelSelector } from "@/app/agent/components/model-selector";
 import { VideoPicker, VideoChips } from "@/app/agent/components/video-picker";
+import { UploadDialog } from "@/app/projects/[projectId]/components/upload-dialog";
 import { useProjectVideos } from "@/hooks/use-project-videos";
 import { useSidebar } from "@/components/ui/sidebar";
 import { ModeToggle } from "@/components/global/theme-switcher";
@@ -45,6 +46,7 @@ export function AgentChat({
 }: AgentChatProps) {
   const [input, setInput] = useState("");
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const { selectedModel, handleModelChange } = useModelSelection();
   const { toggleSidebar } = useSidebar();
   const studioOpen = useAgentStore((state) => state.studioState.isOpen);
@@ -52,7 +54,7 @@ export function AgentChat({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { videos, readyVideos } = useProjectVideos(projectId ?? "");
+  const { videos, readyVideos, refetch } = useProjectVideos(projectId ?? "");
 
   const { messages, status, sendMessage } = useChat({
     messages: initialMessages,
@@ -164,7 +166,7 @@ export function AgentChat({
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                   {readyVideos.length > 0
                     ? "Tag the videos you want to search, then ask a question, look for a moment, or request clips."
-                    : "No videos are indexed in this project yet. Upload one from the project page first."}
+                    : "No videos are indexed in this project yet. Add one below to get started."}
                 </p>
               </div>
             </div>
@@ -204,11 +206,24 @@ export function AgentChat({
                 disabled={isBusy}
               />
 
-              <ModelSelector
+              {/* Uploads land in the project, so without one there is nowhere
+                  to put them — the workspace creates the project first. */}
+              <button
+                type="button"
+                onClick={() => setUploadOpen(true)}
+                disabled={isBusy || !projectId}
+                title="Add a video to this project"
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              >
+                <PlusIcon className="size-4" />
+                Add video
+              </button>
+
+              {/* <ModelSelector
                 key={selectedModel}
                 selectedModelId={selectedModel}
                 onModelChange={handleModelChange}
-              />
+              /> */}
             </PromptInputTools>
             <PromptInputSubmit
               disabled={!input.trim() && !isBusy}
@@ -217,6 +232,15 @@ export function AgentChat({
           </PromptInputFooter>
         </PromptInput>
       </div>
+
+      {projectId && (
+        <UploadDialog
+          projectId={projectId}
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          onComplete={() => void refetch()}
+        />
+      )}
     </div>
   );
 }

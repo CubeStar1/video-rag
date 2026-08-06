@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 
-# Run from anywhere: scripts live one level below the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import time
 import warnings

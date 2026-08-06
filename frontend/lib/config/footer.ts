@@ -19,15 +19,15 @@ export interface FooterConfig {
 
 export const footerConfig: FooterConfig = {
   brand: {
-    title: "Vercel AI SDK",
-    description: "A template for building AI-powered applications."
+    title: "FalconVQA",
+    description: "Retrieval-augmented generation for video — grounded answers, timecodes, and playable clips."
   },
   sections: [
     {
       title: "Platform",
       links: [
-        { href: "/chat", label: "Chat" },
-        { href: "/dashboard", label: "Voice Assistant" },
+        { href: "/projects", label: "Projects" },
+        { href: "/architecture", label: "Architecture" },
       ]
     },
     {
@@ -38,5 +38,5 @@ export const footerConfig: FooterConfig = {
       ]
     }
   ],
-  copyright: `© ${new Date().getFullYear()} AI SDK Template. All rights reserved.`
+  copyright: `© ${new Date().getFullYear()} FalconVQA. All rights reserved.`
 }

@@ -2,47 +2,56 @@
 
 \subsection{Functional Requirements}
 
-Requirements are stated from the operator's perspective --- what a user of the system
-must be able to do with their footage.
+Functional requirements are stated from the operator's perspective: what a user of the
+system must be able to do with their footage. Requirements FR-1 to FR-12 are
+implemented across the client application and the core analysis service.
 
 \begin{table}[htbp]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lL{2.6cm}X@{}}
+\begin{tabularx}{\textwidth}{@{}lL{2.8cm}X@{}}
 \toprule
 \textbf{ID} & \textbf{Capability} & \textbf{The system shall allow the operator to\dots} \\
 \midrule
-FR-1 & Adding footage    & Add a recording to the system, either as a file or as a link, and choose how thoroughly it should be examined --- trading processing cost against the depth of detail captured. \\
-FR-2 & Tracking progress & See that a recording is being processed, which stage it has reached and how far along it is, and continue working while it runs. \\
-FR-3 & Searching         & Find moments by describing what happened in plain language, without knowing when it occurred or what it was called. \\
-FR-4 & Narrowing results & Narrow a search to a period of the recording, to footage containing particular people, objects or spoken content, or to a chosen set of recordings. \\
-FR-5 & Asking questions  & Ask a question about a recording and receive a direct answer, with references to the moments the answer was drawn from. \\
-FR-6 & Reviewing results & See exactly when each result occurred and play the footage from that moment. \\
-FR-7 & Understanding a recording & Review a recording as a whole --- its summary, its chapters, the notable events in it, the people and objects that appear and when, and anything unusual. \\
-FR-8 & Revisiting footage & Re-examine a recording already in the system at a different level of detail, without re-adding it and without losing what was already found. \\
+FR-1 & Account and workspace & Register, authenticate, and organise recordings into named projects, with each operator able to reach only their own projects and recordings. \\
+FR-2 & Adding footage & Add a recording to a project, either as an uploaded file or as a link, and select how thoroughly it is to be examined, trading processing cost against the depth of detail captured. \\
+FR-3 & Tracking progress & Observe that a recording is being processed, which stage it has reached and how far it has advanced, and continue working while processing proceeds. \\
+FR-4 & Searching & Locate moments by describing what occurred in natural language, without knowing when it occurred or what it was called. \\
+FR-5 & Narrowing results & Restrict a search to a period of the recording, to footage containing particular people, objects or spoken content, or to a chosen subset of recordings. \\
+FR-6 & Asking questions & Pose a question about one or more recordings and receive a direct answer accompanied by references to the moments from which it was derived. \\
+FR-7 & Reviewing results & Determine exactly when each result occurred and play the footage from that moment, individually or as a continuous reel of moments. \\
+FR-8 & Understanding a recording & Review a recording as a whole without watching the footage: its summary, chapters, notable events, the people and objects that appear and when, and any anomalies. \\
+FR-9 & Conversing about footage & Conduct a multi-turn conversation about a project's recordings in which the assistant selects the appropriate retrieval operations, and have that conversation persist for later resumption. \\
+FR-10 & Inspecting the index & Examine what the system recorded for any individual chunk (scene description, on-screen text, people, objects and speech) alongside a timeline synchronised with playback. \\
+FR-11 & Re-examining footage & Re-examine a recording already held by the system at a different depth of analysis, without re-adding it and without discarding results already obtained. \\
+FR-12 & Programmatic access & Drive every retrieval capability over a documented HTTP API whose analyzers, filters and response shapes are discoverable from the API itself. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \subsection{Non-Functional Requirements}
 
-Stated as service targets an operator would notice. The figures are design budgets
-to be confirmed by benchmarking, not measured results.
+Non-functional requirements are stated as service targets an operator would observe.
+The stated figures are design budgets to be confirmed by benchmarking, not measured
+results.
 
 \begin{table}[htbp]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lL{2.6cm}X@{}}
+\begin{tabularx}{\textwidth}{@{}lL{2.8cm}X@{}}
 \toprule
 \textbf{ID} & \textbf{Quality} & \textbf{Requirement} \\
 \midrule
-NFR-1 & Responsiveness & A description search returns ranked moments within 2 seconds, and a question is answered within 15 seconds. \\
-NFR-2 & Processing time & A recording becomes searchable within roughly three times its own length, and the operator can keep working on other recordings while it processes. \\
-NFR-3 & Transparency   & Progress is visible throughout processing, refreshed at least every 5 seconds, so a long wait is never unexplained. \\
-NFR-4 & Playback       & Selecting a result begins playing the footage at that moment within 2 seconds, with no manual scrubbing. \\
-NFR-5 & Trustworthiness & Every answer cites the moments it was drawn from, and the system states that it cannot answer rather than guessing. \\
-NFR-6 & Robustness     & Ordinary surveillance footage --- unedited, often silent, from a fixed camera --- is handled as a normal case, not a failure case. \\
-NFR-7 & Cost control   & The operator chooses how thoroughly each recording is examined, and reviewing what was found never incurs further processing cost. \\
+NFR-1 & Responsiveness & A description search returns ranked moments within 2 seconds; a question is answered within 15 seconds. \\
+NFR-2 & Processing time & A recording becomes searchable within approximately three times its own duration, and the operator may continue working on other recordings while it is processed. \\
+NFR-3 & Transparency & Processing stage and progress remain visible throughout ingestion, refreshed at least every 5 seconds, so that a prolonged wait is never unexplained. \\
+NFR-4 & Playback latency & Selecting a result begins playback of the footage at that moment within 2 seconds, with no manual scrubbing. \\
+NFR-5 & Traceability & Every answer cites the moments from which it was derived, and the system states that the footage does not support an answer rather than producing one. \\
+NFR-6 & Robustness & Ordinary surveillance footage, meaning unedited, frequently silent and recorded from a fixed camera, is handled as the normal case rather than as a failure case. \\
+NFR-7 & Cost control & The operator selects how thoroughly each recording is examined, and reviewing results already obtained incurs no further processing cost. \\
+NFR-8 & Extensibility & A new analyzer or aggregator is added as a single module and one registry entry, with no modification to ingestion, storage or the API. \\
+NFR-9 & Data isolation & Recordings, projects and conversations are readable only by the account that owns them, enforced at the database and at the boundary through which the agent reaches the analysis service. \\
+NFR-10 & Idempotent ingestion & A recording is identified by the content of its bytes, so that re-submitting the same file is recognised as the same recording and is neither stored nor processed twice. \\
 \bottomrule
 \end{tabularx}
 \end{table}

@@ -1,0 +1,120 @@
+---
+title: Analyzers
+description: The six per-chunk passes — what each one needs, what it produces, and what it costs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+An analyzer is one analysis pass over every chunk, bundling its own frame sampling, prompt and
+output shape. Which analyzers ran on a video decides what that video can be asked at all: one
+analysed without `people` cannot answer who was there; one without speech has nothing to quote.
+
+Analyzers are selected **per upload**, because their costs differ wildly.
+
+## The six
+
+| id | Needs | Produces | Billed |
+|---|---|---|---|
+| `default_video` | frames | `description`, `setting`, `people`, `objects`, `actions`, `tags` | Per chunk |
+| `transcript` | audio | Plain speech text per chunk | Free |
+| `diarization` | audio | `turns` of `{speaker, start, end, text}` plus `speakers` | Free |
+| `ocr` | frames | `texts` of `{text, context}` plus a `summary` | Gated |
+| `people` | frames | Per person: appearance, clothing, role, action, box `locations` | Per chunk |
+| `object_detection` | frames | `detections` of `{object, description, context}` plus plain `objects` | Gated |
+
+"Billed" means an API call to the vision model. "Gated" means a cheap local detector decides
+whether a frame reaches the model at all, so blank frames cost nothing.
+
+## `default_video` — scene description
+
+The general-purpose analyzer and the default. It produces a structured description of what is
+happening, and its output feeds four of the five named vectors, so most searches run against it.
+
+Appearance, clothing, actions, objects and setting all live here. A search for "man in a white
+shirt walking toward the registers" is a `default_video` search.
+
+## `transcript` and `diarization` — speech
+
+<Callout type="warn">
+  These two are **mutually exclusive**. `diarization` is a strict superset: both embed the same
+  Whisper text — their vectors come out cosine-identical (1.0000) — and diarization adds speaker
+  attribution on top. Selecting both is a `400`; `GET /analyzers` returns `exclusive_groups` so a
+  client can grey the option out instead of failing on submit.
+</Callout>
+
+Diarization runs over the **whole track once**, not per chunk. Speaker labels are only consistent
+across a video if they come from a single pass — otherwise the same person is `SPEAKER_00` in one
+chunk and `SPEAKER_01` in the next. Whisper segments are then matched to whichever speaker turn
+overlaps them most, since the two tools cut on different criteria and rarely align exactly.
+
+Its vector embeds the speech **without** the `SPEAKER_00:` prefixes. Labels are for display and
+filtering; inside the vector they are repeated tokens that dilute the actual words.
+
+Whisper hallucinates on non-speech audio, so VAD filtering is on. Language is detected once per
+video and pinned — per-segment detection produced fluent German from an English clip.
+
+## `ocr` — on-screen text
+
+EasyOCR's **detector** (not its recognition stage) finds where text is. Frames with none are
+dropped before any API spend, near-duplicates are removed, and the remaining frames get the
+detected regions boxed before a vision model reads them.
+
+It sends images at 1600px with `detail="high"`, unlike every other analyzer's 768px. At the
+smaller size, small or low-contrast text is illegible and gets silently missed.
+
+## `people` — who is present
+
+Per person: appearance, clothing, role, action, and per-frame box `locations`. Required for the
+entity chain — `entities`, `entity_timelines` and `cooccurrence` are all skipped without it.
+
+`locations` is stripped from API responses by default. It is per-frame box geometry that only the
+entity-linking pass needs, and a wall of pixel coordinates is noise to anything reading chunk
+output for meaning. Pass `verbose=true` to see it.
+
+<Callout type="info">
+  Within-chunk person tracking fragments: IoU tracking at 1 fps loses people who move between
+  sampled frames. `box_id` is a referent *within a chunk*, not an identity claim. Identity across
+  the video comes from the `entities` aggregator, not from tracking.
+</Callout>
+
+## `object_detection` — objects in detail
+
+YOLO acts as the gate, the same way EasyOCR does for `ocr`. Each object gets an appearance and a
+purpose rather than just a name.
+
+<Callout type="warn">
+  **Detector labels are never shown to the vision model.** YOLO only knows COCO classes and
+  confidently called a thermal-imaged tank an "airplane" (0.73 confidence). Writing that guess
+  onto the image invites the model to agree with it — unlabelled, the same vehicle was identified
+  correctly as a tank. YOLO's labels are kept in `_detector_labels` for debugging only.
+</Callout>
+
+## Frame sampling
+
+Shared by every frame-based analyzer:
+
+- Sampling uses an **adaptive threshold with an absolute ceiling**. A fixed 0.95 kept one frame on
+  a static camera (consecutive similarity median 0.9955); a purely relative threshold mined
+  "distinct" frames out of compression noise. Both were measured.
+- Frames are read with `grab()`/`retrieve()`, never per-frame seeking. Seeking makes H.264 restart
+  from a keyframe — measured at roughly 22× more expensive per frame.
+
+## Choosing a set
+
+| Footage | Reasonable selection |
+|---|---|
+| Interview, meeting, podcast | `default_video` + `diarization` |
+| Lecture with slides | `default_video` + `diarization` + `ocr` |
+| CCTV / surveillance | `default_video` + `people` (+ `object_detection`) |
+| Silent b-roll | `default_video` |
+| Cheapest useful pass | `transcript` alone — free, but nothing visual is searchable |
+
+Analyzers can be added later: re-index with the same chunking and the new analyzer runs while
+existing output is kept. Aggregates then recompute automatically, because the set changed.
+
+## Adding an analyzer
+
+One module exposing `id`, `analyze(chunks, ctx)` and `render_fields(output)`, plus a line in
+`videomind/analyzers/__init__.py`. Nothing in ingest, the vector store, or the API changes — and
+because the frontend's upload dialog builds its list from `GET /api/core/capabilities`, nothing
+in the frontend changes either.

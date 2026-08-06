@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "@xyflow/react/dist/style.css";
 @import "@videojs/react/video/skin.css";
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
 
 
 @custom-variant dark (&:is(.dark *));

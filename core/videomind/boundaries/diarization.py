@@ -24,7 +24,14 @@ def _get_pipeline() -> Pipeline:
 
 
 def diarize(waveform: np.ndarray, sample_rate: int) -> Annotation:
-    """Run speaker diarization on a mono waveform, return a pyannote Annotation."""
+    """Run speaker diarization on a mono waveform, return a pyannote Annotation.
+
+    An empty waveform (a video with no audio track) diarizes to no speakers
+    rather than being handed to the pipeline, which cannot window it.
+    """
+    if len(waveform) == 0:
+        return Annotation()
+
     wav = torch.from_numpy(waveform) if isinstance(waveform, np.ndarray) else waveform
     if wav.ndim == 1:
         wav = wav.unsqueeze(0)

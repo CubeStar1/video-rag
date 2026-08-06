@@ -75,7 +75,7 @@ class ChaptersAggregator:
         for chapter in result.get("chapters", []):
             first, last = by_id.get(chapter["first_chunk"]), by_id.get(chapter["last_chunk"])
             if first is None or last is None:
-                continue  # model invented a chunk id
+                continue
             chapters.append({
                 **chapter,
                 "start": first["start"],

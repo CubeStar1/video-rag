@@ -18,24 +18,24 @@ interface Highlight {
 
 const highlights: Highlight[] = [
   {
-    text: 'Conversational Agent',
-    description: 'Interact with an intelligent assistant to build complex workflows simply by describing your needs.',
-    image: '/landing/rpa-dashboard.png',
+    text: 'Grounded Answers',
+    description: 'Ask in plain language. The agent searches speech and visuals together, then answers with the exact timecodes it used.',
+    image: '/landing/video-mind-dash.png',
   },
   {
-    text: 'Live Visualization',
-    description: 'Monitor pipeline stages dynamically with an interactive event graph in real-time.',
-    image: '/landing/rpa-dashboard.png',
+    text: 'Clip Reels',
+    description: '"Show me every moment X appears" returns a playable reel in the artifact panel — click any row to jump, or play them all back to back.',
+    image: '/landing/video-mind-dash.png',
   },
   {
-    text: 'UiPath & LlamaIndex',
-    description: 'Powered by robust RPA integration to autonomously orchestrate tasks and process inputs.',
-    image: '/landing/rpa-dashboard.png',
+    text: 'Scene-Aware Chunking',
+    description: 'Speaker turns, silence, hard cuts, and semantic drift are fused into boundaries that follow the content — not a fixed clock.',
+    image: '/landing/video-mind-arch.png',
   },
   {
-    text: 'Automated PRs',
-    description: 'AI generates the YAML files, validates them, and automatically opens Pull Requests on your repository.',
-    image: '/landing/rpa-dashboard.png',
+    text: 'Vision + Speech Index',
+    description: 'YOLO detection, CLIP embeddings, Whisper transcripts, and on-screen OCR land in one searchable index per chunk.',
+    image: '/landing/video-mind-tech.png',
   },
 ]
 
@@ -165,10 +165,10 @@ export function HoverHighlights() {
           <div className="flex flex-col justify-center gap-6">
             <div className="flex flex-col gap-6">
               <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
-                Intelligent CI/CD Orchestration
+                Search video like it&apos;s text
               </h2>
               <p className="text-lg text-neutral-400">
-                Everything you need to automate your GitHub Actions workflows
+                Retrieval that understands what was said, what was shown, and when it happened
               </p>
             </div>
 

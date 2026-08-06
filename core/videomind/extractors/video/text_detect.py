@@ -3,7 +3,7 @@ import numpy as np
 
 _reader = None
 
-Box = tuple[int, int, int, int]  # x1, y1, x2, y2
+Box = tuple[int, int, int, int]
 
 
 def _get_reader():
@@ -29,7 +29,6 @@ def detect_boxes(frame_rgb: np.ndarray, min_size: int = 12) -> list[Box]:
     horizontal, free = reader.detect(bgr, min_size=min_size)
 
     boxes: list[Box] = []
-    # Both come back batched (one entry per input image).
     for x_min, x_max, y_min, y_max in (horizontal[0] if horizontal else []):
         boxes.append((int(x_min), int(y_min), int(x_max), int(y_max)))
     for polygon in (free[0] if free else []):

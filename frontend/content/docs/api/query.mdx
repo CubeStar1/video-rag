@@ -1,0 +1,177 @@
+---
+title: Search
+description: POST /query — vector search over chunk records, with typed filters, named vectors and three detail levels.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`POST /query` finds **segments**. For a question whose answer is a conclusion rather than a
+location, use [`POST /ask`](/docs/api/ask).
+
+`application/json`.
+
+## Body
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `text` | string | *required* | The search query |
+| `video_ids` | `string[]` \| null | `null` | Restrict to these videos. **`null` searches every video in the install** |
+| `analyzer` | string | `default_video` | Which analyzer's output to search |
+| `field` | string | `combined` | Which named vector to compare against |
+| `limit` | int | `5` | 1–50 |
+| `score_threshold` | float \| null | `null` | Drop weaker matches |
+| `synthesize` | bool | `true` | Whether to generate an answer over the hits |
+| `detail` | string | `standard` | `minimal` \| `standard` \| `full` |
+| `filters` | object | `{}` | Any filter from `GET /schema` |
+
+## Example
+
+```bash
+curl -X POST http://127.0.0.1:8077/query \
+  -H "X-Core-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "man in yellow shorts walking toward the registers",
+    "video_ids": ["95e110e25070fcfc"],
+    "analyzer": "default_video",
+    "field": "people",
+    "limit": 5,
+    "score_threshold": 0.5,
+    "synthesize": true
+  }'
+```
+
+```json
+{
+  "query": "man in yellow shorts walking toward the registers",
+  "analyzer": "default_video",
+  "field": "people",
+  "detail": "standard",
+  "answer": "A man in a white T-shirt and yellow shorts walks down the centre aisle toward the registers [95e110e25070fcfc 77.80-83.80s].",
+  "results": [ { "…": "SearchResult" } ]
+}
+```
+
+<Callout type="info">
+  `answer` is `null` when `synthesize` is false or nothing matched. It is never fabricated from an
+  empty result set.
+</Callout>
+
+## `field` — which vector
+
+Each chunk is one point carrying several named vectors.
+
+| Field | Embeds |
+|---|---|
+| `combined` | The whole flattened record (default) |
+| `description` | Prose summary only |
+| `people` | Person descriptions only |
+| `actions` | Actions and what objects are used for |
+| `objects` | Object names only |
+
+`combined` covers everything; the others match one part, so a short precise match is not diluted
+by surrounding prose. A chunk missing that field is **excluded**, not matched on empty text — a
+video with no people cannot surface in a `field=people` search.
+
+## `detail` — how much comes back
+
+A browser and an agent want opposite things from the same hit. Five full hits measured about 19k
+tokens against ~440 for the same hits at `minimal`.
+
+| Level | Contents |
+|---|---|
+| `minimal` | `video_id`, `chunk_id`, `start`, `end`, `timecode`, `score`, 180-char `snippet` |
+| `standard` | plus `video_url`, `description`, `people`, `objects`, `actions`, `tags`, `speakers`, `people_count`, `turns` |
+| `full` | plus `text`, `persons`, `detections`, `texts` |
+
+The agent pattern: `detail=minimal` to choose, then
+[`GET /videos/{id}/chunks?chunk_ids=…`](/docs/api/chunks) to read the few that matter.
+
+## `filters`
+
+A flat dict, validated against one spec, so a filter added to the store is reachable here
+immediately — no plumbing.
+
+```json
+{
+  "filters": {
+    "chunk_ids": [2, 4, 7],
+    "video_ids": ["95e110e25070fcfc"],
+    "analyzer_ids": ["people"],
+    "after": 60,
+    "before": 300,
+    "min_people": 2,
+    "max_people": 9,
+    "objects": ["shopping cart"],
+    "tags": ["checkout"],
+    "speakers": ["SPEAKER_00"],
+    "people": ["cashier"],
+    "chunk_config": "interval:30"
+  }
+}
+```
+
+| Filter | Type | Match |
+|---|---|---|
+| `video_ids` | `list[str]` | any |
+| `chunk_ids` | `list[int]` | any |
+| `analyzer_ids` | `list[str]` | any |
+| `chunk_config` | `str` | exact |
+| `objects`, `tags`, `speakers`, `people` | `list[str]` | any |
+| `min_people` / `max_people` | `int` | ≥ / ≤ |
+| `after` / `before` | `float` | ≥ `start` / ≤ `end` |
+
+<Callout type="warn">
+  Unknown keys are a `400` with a suggestion — `Unknown filter 'speaker'; did you mean
+  'speakers'?` — rather than being ignored. A silently dropped filter returns plausible but wrong
+  results.
+
+  Every filter is a hard `AND` against exact stored labels, so it can only ever *remove* results.
+  Speculative filters ("white shirt" as an object) quietly reduce a good result set to nothing.
+</Callout>
+
+`video_ids` and `analyzer` stay first-class parameters because every caller uses them; they simply
+join the filter dict on the way down.
+
+## `score_threshold`
+
+Cosine similarity always ranks *something*, so without a threshold a query for absent content
+returns weak neighbours instead of nothing.
+
+Measured on sample data: present content scored ≥ 0.665, absent ≤ 0.524 — so roughly 0.55–0.60
+separates them. Retune per field and per embedding model; appearance queries (`field=people`)
+score lower than topic queries, around 0.51–0.54.
+
+Set it only when the question is whether something is **absent** and an empty result has to mean
+"not present".
+
+## SearchResult
+
+| Field | Type | Notes |
+|---|---|---|
+| `video_id` | string | Content hash of the source file |
+| `video_url` | string | Public Storage URL of the source video |
+| `chunk_id` | int | Index **within its video** — only meaningful with `video_id` |
+| `start`, `end` | float | Seconds; use these to seek |
+| `timecode` | string | Human form, e.g. `"1:17.80-1:23.80"` |
+| `score` | float | Cosine similarity, 0–1 |
+| `snippet` | string | `minimal` only — first 180 characters |
+| `description` | string | Prose description |
+| `people`, `objects`, `actions`, `tags` | `string[]` | Structured facets; empty for analyzers that do not produce them |
+| `speakers` | `string[]` | Speakers heard in the chunk (`diarization`) |
+| `people_count` | int \| null | From the `people` analyzer |
+| `turns` | `object[]` | `{speaker, start, end, text}` — who said what, with its own seek time |
+| `text` | string | `full` only — the text that was embedded |
+| `persons`, `detections`, `texts` | `object[]` | `full` only — every nested record |
+
+<Callout type="info">
+  The payload is self-sufficient: everything needed to cite and play a moment is on the hit, with
+  no lookup into records.
+</Callout>
+
+## Errors
+
+| Code | Cause |
+|---|---|
+| `400` | Unknown `analyzer`, `field`, `detail`, or filter key |
+| `401` | Missing or wrong token |

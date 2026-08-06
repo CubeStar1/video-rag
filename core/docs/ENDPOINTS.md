@@ -145,6 +145,46 @@ curl -X POST http://127.0.0.1:8077/videos/url \
   -d '{"url":"https://example.com/clip.mp4","analyzers":"default_video,transcript","preset":"video"}'
 ```
 
+### YouTube URLs
+
+A YouTube link works in the same field — no separate route and no flag:
+
+```bash
+curl -X POST http://127.0.0.1:8077/videos/url \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://www.youtube.com/watch?v=jNQXAC9IVRw","analyzers":"default_video"}'
+```
+
+yt-dlp resolves it to an mp4, which is then hashed, cached and uploaded to the
+bucket exactly like any other video. Everything after that is identical: the
+record's `filename` is the video's title, `source_url` is the link you supplied,
+and `video_id` is still the hash of the bytes — so the same video ingested from
+YouTube and from a file is one video, not two.
+
+Watch, share, shorts, embed, `m.` and `music.` URLs are all accepted. Two are
+refused up front, because neither can produce a video the pipeline can chunk:
+
+| Refused | Why |
+|---|---|
+| A live stream | No end to chunk. Ingest the recording once it has finished. |
+| Longer than `VIDEOMIND_YT_MAX_DURATION` (default 3600 s) | Analyzers bill per chunk, and a URL makes a ten-hour video a one-line mistake. Raise the variable to allow more. |
+
+**Resolution depends on ffmpeg.** YouTube publishes 1080p as separate video and
+audio streams, so joining them needs an `ffmpeg` binary on `PATH` (or at
+`VIDEOMIND_FFMPEG`). Without one the best single file on offer is usually 360p —
+legible enough for the scene analyzer, poor for OCR. `GET /health` reports which
+you will get:
+
+```json
+{ "youtube": { "enabled": true, "ffmpeg": null, "max_quality": "360p (install ffmpeg for more)" } }
+```
+
+PyAV does not count: it bundles ffmpeg's *libraries*, not its command line
+binary.
+
+Some videos refuse anonymous clients. Point `VIDEOMIND_YT_COOKIES` at a
+`cookies.txt`, or set `VIDEOMIND_YT_COOKIES_FROM_BROWSER=chrome`, to sign in.
+
 ```json
 { "job_id": "d9b16a609ab1", "status": "queued", "source": "https://example.com/clip.mp4" }
 ```
@@ -152,8 +192,8 @@ curl -X POST http://127.0.0.1:8077/videos/url \
 `video_id` is the hash of the bytes, so it does not exist until the download
 finishes — it arrives in the job result, with `video_url`.
 
-Returns **400** for a non-`http(s)` URL as well as for the analyzer and mode
-errors above. A URL that 404s, serves an HTML error page instead of a video, or
+Returns **400** for a non-`http(s)` URL, for a YouTube link when yt-dlp is not
+installed, and for the analyzer and mode errors above. A URL that 404s, serves an HTML error page instead of a video, or
 exceeds `VIDEOMIND_MAX_BYTES` fails the **job**, not the request: the download
 starts after the 202.
 

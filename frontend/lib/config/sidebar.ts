@@ -3,7 +3,7 @@ import { SidebarConfig } from "@/components/global/app-sidebar";
 
 const sidebarConfig: SidebarConfig = {
   brand: {
-    title: "RPA",
+    title: "FalconVQA",
     icon: Icons.bot,
     href: "/"
   },

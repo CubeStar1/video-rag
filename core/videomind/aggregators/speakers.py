@@ -51,8 +51,6 @@ class SpeakerStatsAggregator:
             })
         speakers.sort(key=lambda s: -s["seconds"])
 
-        # A handover is one speaker following another; counting them separates
-        # a rapid exchange from two people taking long uninterrupted turns.
         handovers = sum(1 for a, b in zip(turns, turns[1:]) if a["speaker"] != b["speaker"])
 
         return {

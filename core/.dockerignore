@@ -1,0 +1,22 @@
+# Everything the app writes, plus local-only build artefacts. `data/` in
+# particular is gigabytes of cached video that the container mounts as a
+# volume instead.
+.venv/
+venv/
+data/
+media/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.frames/
+runs/
+*.log
+
+# Secrets are supplied as environment variables at runtime, never baked in.
+.env
+
+uv.lock
+docs/
+CLAUDE.md

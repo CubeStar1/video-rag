@@ -6,6 +6,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createXai } from '@ai-sdk/xai';
 import { createGroq } from "@ai-sdk/groq";
 import { createCerebras } from '@ai-sdk/cerebras';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 export { models, defaultModel, type Model } from '../models';
 
 export function createMyProvider(apiKeys: {
@@ -35,10 +36,16 @@ export function createMyProvider(apiKeys: {
     apiKey: apiKeys.cerebras || process.env.CEREBRAS_API_KEY,
   });
 
+  const lmstudio = createOpenAICompatible({
+    name: 'lmstudio',
+    baseURL: process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234/v1',
+  });
+
   return customProvider({
     languageModels: {
       'gpt-4o-mini': openai('gpt-4o-mini'),
       'gpt-4.1-mini': openai('gpt-4.1-mini'),
+      'gpt-5.4-mini': openai('gpt-5.4-mini'),
       'gemini-2.5-flash': google('gemini-2.5-flash'),
       'llama-3.3-70b-versatile': groq('llama-3.3-70b-versatile'),
       'openai/gpt-oss-120b': groq('openai/gpt-oss-120b'),
@@ -46,6 +53,7 @@ export function createMyProvider(apiKeys: {
       'moonshotai/kimi-k2-instruct': groq('moonshotai/kimi-k2-instruct-0905'),
       'llama3.1-8b': cerebrasProvider('llama3.1-8b'),
       'gpt-oss-120b': cerebrasProvider('gpt-oss-120b'),
+      'qwen/qwen3-vl-4b': lmstudio('qwen/qwen3-vl-4b'),
     },
     fallbackProvider: openai,
   });

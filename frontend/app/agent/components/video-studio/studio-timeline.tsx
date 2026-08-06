@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Minus, Plus, Scan } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatTimestamp } from '@/lib/videodb/format'
-import type { SceneSegment, TranscriptSegment } from '@/lib/videodb/types'
+import { formatTimestamp } from '@/lib/core/format'
+import type { SceneSegment, TranscriptSegment } from '@/lib/core/types'
 
 interface StudioTimelineProps {
   duration: number
