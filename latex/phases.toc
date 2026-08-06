@@ -1,0 +1,52 @@
+\contentsline {part}{I\hspace {1em}Phase 1: Problem, Architecture and Planning}{2}{part.1}%
+\contentsline {section}{\numberline {1}Problem Statement}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}System Identification}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Statement}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Background}{3}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Why Existing Tools Do Not Solve It}{3}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Objectives}{3}{subsection.1.5}%
+\contentsline {subsection}{\numberline {1.6}Requirements}{4}{subsection.1.6}%
+\contentsline {section}{\numberline {2}Creative Enhancement}{5}{section.2}%
+\contentsline {section}{\numberline {3}High-Level Architecture}{7}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Tier Structure}{7}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}The Processing Pipeline}{8}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Ingestion Lifecycle}{8}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Technology Stack}{8}{subsection.3.4}%
+\contentsline {section}{\numberline {4}UI and Acceptance Planning}{9}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Interface Plan}{9}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Acceptance Planning}{10}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Execution Plan}{11}{section.5}%
+\contentsline {part}{II\hspace {1em}Phase 2: Detailed Design, Interface, Dependencies and Test Plan}{11}{part.2}%
+\contentsline {section}{\numberline {6}Detailed Design}{12}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Design Flow}{12}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Database Design}{16}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Normalisation}{17}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Schema}{17}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Modularity}{19}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}Scalability}{20}{subsection.6.6}%
+\contentsline {subsection}{\numberline {6.7}Security}{20}{subsection.6.7}%
+\contentsline {section}{\numberline {7}Detailed User Interface}{21}{section.7}%
+\contentsline {section}{\numberline {8}Third-Party Libraries and Tools}{23}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Extent of the Dependency}{23}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Principal Dependencies}{23}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Paid and Metered Services}{25}{subsection.8.3}%
+\contentsline {section}{\numberline {9}Acceptance Test Plan and Test Cases}{25}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Plan}{25}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Test Cases}{26}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Test Automation}{29}{subsection.9.3}%
+\contentsline {section}{\numberline {10}Documentation of Process, Design, ATP and ATCs}{30}{section.10}%
+\contentsline {part}{III\hspace {1em}Phase 3: Implementation}{30}{part.3}%
+\contentsline {section}{\numberline {11}Coding Standards}{30}{section.11}%
+\contentsline {section}{\numberline {12}User Implementation}{31}{section.12}%
+\contentsline {section}{\numberline {13}Scalable and Sustainable Design}{31}{section.13}%
+\contentsline {section}{\numberline {14}Dataset Creation}{32}{section.14}%
+\contentsline {part}{IV\hspace {1em}Phase 4: Product, Performance and Delivery}{33}{part.4}%
+\contentsline {section}{\numberline {15}Product Demo: Completeness}{33}{section.15}%
+\contentsline {section}{\numberline {16}Product Demo: Correctness}{34}{section.16}%
+\contentsline {section}{\numberline {17}Product Performance}{34}{section.17}%
+\contentsline {subsection}{\numberline {17.1}Precision}{34}{subsection.17.1}%
+\contentsline {subsection}{\numberline {17.2}Latency}{35}{subsection.17.2}%
+\contentsline {subsection}{\numberline {17.3}Memory and Processor Usage}{36}{subsection.17.3}%
+\contentsline {subsection}{\numberline {17.4}Scale Limits}{39}{subsection.17.4}%
+\contentsline {section}{\numberline {18}UI Implementation}{39}{section.18}%
+\contentsline {section}{\numberline {19}Documentation}{39}{section.19}%
