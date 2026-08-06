@@ -43,8 +43,4 @@ const create = server<typeof Config, import("fumadocs-mdx/runtime/types").Intern
   }
 }>({"doc":{"passthroughs":["extractedReferences"]}});
 
-<<<<<<< HEAD
-export const docs = await create.docs("docs", "content/docs", {}, {});
-=======
 export const docs = await create.docs("docs", "content/docs", {"meta.json": __fd_glob_0, "api/meta.json": __fd_glob_1, "concepts/meta.json": __fd_glob_2, "getting-started/meta.json": __fd_glob_3, "workspace/meta.json": __fd_glob_4, }, {"architecture.mdx": __fd_glob_5, "index.mdx": __fd_glob_6, "troubleshooting.mdx": __fd_glob_7, "api/aggregates.mdx": __fd_glob_8, "api/ask.mdx": __fd_glob_9, "api/authentication.mdx": __fd_glob_10, "api/chunks.mdx": __fd_glob_11, "api/client-integration.mdx": __fd_glob_12, "api/discovery.mdx": __fd_glob_13, "api/entities.mdx": __fd_glob_14, "api/errors.mdx": __fd_glob_15, "api/index.mdx": __fd_glob_16, "api/ingestion.mdx": __fd_glob_17, "api/jobs.mdx": __fd_glob_18, "api/objects.mdx": __fd_glob_19, "api/query.mdx": __fd_glob_20, "api/videos.mdx": __fd_glob_21, "concepts/aggregators.mdx": __fd_glob_22, "concepts/analyzers.mdx": __fd_glob_23, "concepts/chunking.mdx": __fd_glob_24, "concepts/glossary.mdx": __fd_glob_25, "concepts/pipeline.mdx": __fd_glob_26, "concepts/retrieval.mdx": __fd_glob_27, "getting-started/configuration.mdx": __fd_glob_28, "getting-started/installation.mdx": __fd_glob_29, "getting-started/quickstart.mdx": __fd_glob_30, "workspace/agent-chat.mdx": __fd_glob_31, "workspace/clips-and-artifacts.mdx": __fd_glob_32, "workspace/ingesting-video.mdx": __fd_glob_33, "workspace/projects.mdx": __fd_glob_34, "workspace/video-details.mdx": __fd_glob_35, });
->>>>>>> f-integrate-frontend
