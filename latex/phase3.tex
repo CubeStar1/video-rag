@@ -91,7 +91,14 @@ result carrying a timecode that plays.
 \section{User Implementation}
 
 The interface is organised around one principle: the operator should never have to scrub.
-Every screen terminates in a moment that plays.
+Every screen terminates in a moment that plays. Figure~\ref{fig:ui} shows the implemented
+surfaces.
+
+\optfigure{falcon-vqa-ui-design.png}{Operator interface as implemented. Clockwise from top
+left: the project workspace and video grid; the ingestion dialog, whose analyzer list is
+built from the analysis service's own capability endpoint; the per-recording detail view
+with its chunk map and tabbed record; and the agent chat with the clip reel artifact panel
+and the timeline studio.}{1.0}{fig:ui}
 
 \begin{center}
 \centering

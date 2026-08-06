@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .. import aggregators, analyzers, poster, store, storage
+from .. import aggregators, analyzers, poster, store, storage, youtube
 from ..chunk import chunk_video
 from ..paths import CACHE_DIR, RECORDS_DIR, ensure as ensure_dirs
 from ..vectordb import ChunkStore, config_key
@@ -18,6 +18,11 @@ def validate_source(url: str) -> None:
     if scheme not in storage.ALLOWED_SCHEMES:
         raise ValueError(
             f"Unsupported URL scheme {scheme or '(none)'!r}; expected http or https"
+        )
+    if youtube.is_youtube(url) and not youtube.available():
+        raise ValueError(
+            "This URL is a YouTube link, but yt-dlp is not installed on the "
+            "server; install it or supply a direct video URL."
         )
 
 

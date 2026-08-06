@@ -11,6 +11,7 @@ import httpx
 from dotenv import load_dotenv
 from supabase import create_client
 
+from . import youtube
 from .paths import CACHE_DIR, ensure as ensure_dirs
 
 load_dotenv()
@@ -144,10 +145,18 @@ def fetch_source(url: str) -> dict:
     straight to Storage and handing over the link is the expected path. That
     needs no special case: the bytes still have to come down to be decoded, and
     `_exists` then skips the pointless re-upload.
+
+    A YouTube URL is the one exception, because a GET of it returns a player
+    page rather than a video. It is resolved to a file first and then rejoins
+    the local path; everything downstream still sees one shape.
     """
     scheme = urlparse(url).scheme.lower()
     if scheme not in ALLOWED_SCHEMES:
         raise ValueError(f"Unsupported URL scheme {scheme or '(none)'!r}; expected http or https")
+
+    if youtube.is_youtube(url):
+        with youtube.download(url, max_bytes=MAX_BYTES) as (path, filename):
+            return put_local(str(path), source_url=url, filename=filename)
 
     ensure_dirs()
     filename = _filename_from_url(url)
@@ -201,12 +210,16 @@ def fetch_source(url: str) -> dict:
     return _result(video_id, local, storage_path, filename, url, size)
 
 
-def put_local(path: str) -> dict:
+def put_local(path: str, source_url: str | None = None, filename: str | None = None) -> dict:
     """Same, for a file already on this machine - a multipart upload or a script.
 
     The file is copied into the cache rather than used where it lies, so that
     every video the pipeline touches is reachable by content hash alone and a
     caller's temporary file can be deleted the moment this returns.
+
+    `source_url` and `filename` exist for a caller that resolved a URL to a
+    file itself, as `fetch_source` does for YouTube: the file is named for an
+    opaque video id, and the record should still say where it came from.
     """
     source = Path(path)
     if not source.exists():
@@ -227,10 +240,10 @@ def put_local(path: str) -> dict:
     if not local.exists():
         shutil.copy2(source, local)
 
-    filename = _safe_name(source.name)
-    storage_path = f"{video_id}/{filename}"
-    _upload(local, storage_path, mimetypes.guess_type(source.name)[0] or "video/mp4")
-    return _result(video_id, local, storage_path, filename, None, size)
+    name = _safe_name(Path(filename).stem + suffix if filename else source.name)
+    storage_path = f"{video_id}/{name}"
+    _upload(local, storage_path, mimetypes.guess_type(name)[0] or "video/mp4")
+    return _result(video_id, local, storage_path, name, source_url, size)
 
 
 def local_path_for(video_id: str, storage_path: str | None = None) -> str:

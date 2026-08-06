@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1785976273.71563 "c:/Users/avina/Projects/RVCE/2026/video-chat/latex/phase3.tex" "phase3.pdf" "phase3" 1785976275.9267 0
+["pdflatex"] 1785989095.37698 "c:/Users/avina/Projects/RVCE/2026/video-chat/latex/phase3.tex" "phase3.pdf" "phase3" 1785989097.96586 0
   "C:/Users/avina/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map" 1785921223 163329 05a3f257fdb72d2cbe0c056c0ecae13e ""
   "C:/Users/avina/AppData/Local/MiKTeX/fonts/pk/ljfour/jknappen/ec/dpi600/tcrm1095.pk" 1773684662 12668 9105fc026906a3156ea84e4b849accc2 ""
   "C:/Users/avina/AppData/Local/MiKTeX/miktex/data/le/pdftex/pdflatex.fmt" 1766500042 13333512 9fbd400d1617faf0cf2fa3f1802ae12b ""
@@ -161,10 +161,11 @@
   "C:/Users/avina/AppData/Local/Programs/MiKTeX/tex/latex/tools/tabularx.sty" 1761901070 7243 a2c17f18e2c9b702b84fad03d5f9c78b ""
   "C:/Users/avina/AppData/Local/Programs/MiKTeX/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/avina/AppData/Local/Programs/MiKTeX/tex/latex/xcolor/xcolor.sty" 1729265222 55384 b454dec21c2d9f45ec0b793f0995b992 ""
-  "c:/Users/avina/Projects/RVCE/2026/video-chat/latex/phase3.tex" 1785976270 35192 617ed6e60db66c543957cee879847e41 ""
-  "phase3.aux" 1785976275 2144 dfbb3aff3979e697603c0eb66971f5c7 "pdflatex"
-  "phase3.out" 1785976275 829 cb65ef6384662e3d359e5fb1abc557cf "pdflatex"
-  "phase3.tex" 1785976270 35192 617ed6e60db66c543957cee879847e41 ""
+  "c:/Users/avina/Projects/RVCE/2026/video-chat/latex/phase3.tex" 1785989091 35317 67eec63060d2abf2fc6f1d41236a7f5e ""
+  "images/falcon-vqa-ui-design.png" 1785953743 560566 592745c279a7b6f2445ccdeb1d5b2980 ""
+  "phase3.aux" 1785989097 3068 5d3877fb1313e64c52f455b409cc305f "pdflatex"
+  "phase3.out" 1785989097 829 cb65ef6384662e3d359e5fb1abc557cf "pdflatex"
+  "phase3.tex" 1785989091 35317 67eec63060d2abf2fc6f1d41236a7f5e ""
   "preamble.tex" 1785968805 2738 19131a69320bb04a865e385120054b50 ""
   (generated)
   "phase3.aux"

@@ -252,3 +252,35 @@ export const VideoChunksResult = memo(function VideoChunksResult({ output }: Res
     </div>
   )
 })
+
+/**
+ * The one write in this set. Shows what was queued and what will be extracted —
+ * the video has no searchable id yet, so there is nothing else to show.
+ */
+export const AddVideoResult = memo(function AddVideoResult({ output }: ResultProps) {
+  if (output?.error) return <ErrorLine message={output.error} />
+  if (!output?.added) return <ErrorLine message="The video was not added." />
+
+  return (
+    <div className="space-y-1.5">
+      <p className="flex items-start gap-1.5 text-xs">
+        <Loader2 className="mt-0.5 size-3 shrink-0 animate-spin text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium">{output.title}</span>
+          <span className="text-muted-foreground"> queued for analysis</span>
+        </span>
+      </p>
+      {output.source_url && (
+        <p className="truncate text-[11px] text-muted-foreground">{output.source_url}</p>
+      )}
+      {output.analyzers?.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Extracting: {output.analyzers.join(', ')}
+        </p>
+      )}
+      <p className="text-[11px] italic text-muted-foreground">
+        Takes a few minutes. Progress is on the project page.
+      </p>
+    </div>
+  )
+})

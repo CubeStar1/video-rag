@@ -33,6 +33,7 @@ dependencies = [
     "transformers==4.57.2",
     "ultralytics==8.4.41",
     "uvicorn==0.44.0",
+    "yt-dlp>=2026.7.4",
 ]
 
 # torch/torchaudio/torchvision come from PyTorch's CUDA 13.0 index on Linux and

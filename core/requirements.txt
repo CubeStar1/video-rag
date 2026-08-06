@@ -40,6 +40,7 @@ scipy==1.16.3
 scikit-learn==1.7.2
 qdrant-client==1.19.0          # embedded vector store
 supabase==2.31.0               # video bytes; brings httpx, used for downloads
+yt-dlp==2026.7.4               # YouTube URLs; bump if extraction starts failing
 
 # --- service ---
 fastapi==0.135.3

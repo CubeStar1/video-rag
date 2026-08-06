@@ -18,12 +18,15 @@ import {
   Search,
   Users,
   SlidersHorizontal,
+  Globe,
+  FilePlus2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { ShowArtifactResult, ShowArtifactAutoOpen } from './show-artifact-result'
 import { ShowClipsResult, ShowClipsAutoOpen } from './show-clips-result'
 import {
+  AddVideoResult,
   VideoAskResult,
   VideoChunksResult,
   VideoEntitiesResult,
@@ -32,6 +35,7 @@ import {
   VideoSearchResult,
   VideoTranscriptResult,
 } from './video-tool-results'
+import { WebSearchResult } from './web-search-result'
 import { DynamicToolResult } from '../dynamic/dynamic-tool-result'
 
 interface StaticToolDisplayProps {
@@ -87,6 +91,16 @@ const STATIC_TOOLS: Record<
     displayName: 'People in Video',
     icon: Users,
     color: 'text-indigo-500',
+  },
+  add_video: {
+    displayName: 'Add Video',
+    icon: FilePlus2,
+    color: 'text-emerald-500',
+  },
+  tavily_search: {
+    displayName: 'Web Search',
+    icon: Globe,
+    color: 'text-blue-500',
   },
 }
 
@@ -154,6 +168,10 @@ function StaticToolDisplayInternal({ part }: StaticToolDisplayProps) {
         return <VideoInsightResult args={args} output={output} />
       case 'get_video_entities':
         return <VideoEntitiesResult args={args} output={output} />
+      case 'add_video':
+        return <AddVideoResult args={args} output={output} />
+      case 'tavily_search':
+        return <WebSearchResult args={args} output={output} />
       default:
         return null
     }

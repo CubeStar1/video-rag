@@ -1,7 +1,6 @@
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getUser } from '@/app/agent/hooks/get-user'
-import { core, CoreApiError } from '@/lib/core/client'
-import { normalizeChunkConfig } from '@/lib/core/chunking'
+import { ingestVideoFromUrl, IngestRejected } from '@/lib/core/ingest'
 import { reconcileAll } from '@/lib/core/reconcile'
 import type { ProjectVideo } from '@/lib/core/types'
 
@@ -51,60 +50,27 @@ export async function POST(request: Request) {
   if (!projectId) return new Response('projectId is required', { status: 400 })
   if (!sourceUrl) return new Response('sourceUrl is required', { status: 400 })
 
-  // Stored on the row so a later re-index replays the same analysis.
-  const ingestConfig = normalizeChunkConfig(config)
-
   const supabase = await createSupabaseServer()
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id,user_id')
-    .eq('id', projectId)
-    .single()
-
-  if (!project || project.user_id !== user.id) {
-    return new Response('Project not found', { status: 404 })
-  }
-
-  const { data: video, error: insertError } = await supabase
-    .from('video_core')
-    .insert({
-      project_id: projectId,
-      user_id: user.id,
-      title: title?.trim() || 'Untitled video',
-      source_type: sourceType === 'url' ? 'url' : 'upload',
-      storage_path: storagePath ?? null,
-      source_url: sourceUrl,
-      status: 'pending',
-      ingest_config: ingestConfig,
-    })
-    .select()
-    .single()
-
-  if (insertError || !video) {
-    return new Response(insertError?.message || 'Failed to create video', { status: 500 })
-  }
-
   try {
-    const { job_id } = await core.ingestUrl(sourceUrl, ingestConfig)
+    const { video, jobId, error } = await ingestVideoFromUrl({
+      supabase,
+      userId: user.id,
+      projectId,
+      title,
+      sourceUrl,
+      sourceType,
+      storagePath,
+      config,
+    })
 
-    const { data: queued } = await supabase
-      .from('video_core')
-      .update({ status: 'queued', job_id, stage: 'fetching' })
-      .eq('id', video.id)
-      .select()
-      .single()
-
-    return Response.json({ video: queued ?? video, job_id })
+    if (error) return Response.json({ video }, { status: 502 })
+    return Response.json({ video, job_id: jobId })
   } catch (error: any) {
-    const message =
-      error instanceof CoreApiError ? error.message : error?.message || 'Ingest failed'
-
-    await supabase
-      .from('video_core')
-      .update({ status: 'failed', error: message })
-      .eq('id', video.id)
-
-    return Response.json({ video: { ...video, status: 'failed', error: message } }, { status: 502 })
+    if (error instanceof IngestRejected) {
+      const status = error.message === 'Project not found' ? 404 : 500
+      return new Response(error.message, { status })
+    }
+    throw error
   }
 }

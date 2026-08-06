@@ -1,4 +1,5 @@
 import { showArtifactTool } from './tools/show-artifact';
+import { tavilySearchTool } from './tools/tavily-search';
 import { createVideoTools } from './tools/core';
 import {
   streamText,
@@ -99,6 +100,7 @@ export async function POST(req: Request) {
           messages: modelMessages,
           tools: {
             show_artifact: showArtifactTool,
+            tavily_search: tavilySearchTool,
             ...createVideoTools({ projectId: projectID, userId: user.id }),
           },
           stopWhen: stepCountIs(15),

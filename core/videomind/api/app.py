@@ -13,7 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFi
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from .. import aggregators, analyzers, storage
+from .. import aggregators, analyzers, storage, youtube
 from ..paths import UPLOAD_DIR, ensure as ensure_dirs
 from ..vectordb.render import VECTOR_FIELDS
 from ..vectordb.store import FILTER_SPEC
@@ -49,12 +49,22 @@ def health():
     Storage is probed rather than assumed: a bad key or a missing bucket would
     otherwise first surface as a failed ingest, minutes later, on a background
     thread, in a job nobody is watching.
+
+    `youtube.max_quality` is reported for the same reason. Without ffmpeg a
+    YouTube ingest silently arrives at 360p and every analyzer downstream is
+    reading a worse video than the caller thinks they supplied.
     """
     store_status = storage.status()
+    ffmpeg = youtube.ffmpeg_path()
     return {
         "status": "ok" if store_status["ok"] else "degraded",
         "ui": ui.enabled(),
         "storage": store_status,
+        "youtube": {
+            "enabled": youtube.available(),
+            "ffmpeg": ffmpeg,
+            "max_quality": "1080p" if ffmpeg else "360p (install ffmpeg for more)",
+        },
         "analyzers": analyzers.available(),
         "aggregators": aggregators.available(),
     }

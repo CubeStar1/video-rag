@@ -43,12 +43,21 @@ Check it is wired up with `GET /health` — `storage.ok` is false, and `status`
 Upload a video in the **Upload** tab — a file or a URL — then use **Search**,
 **Ask**, **Insights** and **Details**.
 
+A YouTube link works anywhere a URL does; yt-dlp resolves it to an mp4 first.
+Install `ffmpeg` and put it on `PATH` if you want more than 360p out of one —
+YouTube publishes 1080p as separate video and audio streams, and joining them
+needs the ffmpeg binary. `GET /health` reports which you will get.
+
 | Variable | Default | For |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | – | Storage. Required; ingest cannot run without them |
 | `VIDEOMIND_BUCKET` | `videos` | Bucket name |
 | `VIDEOMIND_MAX_BYTES` | 4 GiB | Cap on a server-side fetch of a caller-supplied URL |
 | `VIDEOMIND_CACHE` | `data/cache` | Local copies of videos, keyed by content hash |
+| `VIDEOMIND_FFMPEG` | – | An ffmpeg binary not on `PATH`. Without one, YouTube ingests cap at 360p |
+| `VIDEOMIND_YT_MAX_DURATION` | 3600 | Longest YouTube video accepted, in seconds |
+| `VIDEOMIND_YT_COOKIES` | – | `cookies.txt`, for YouTube videos that refuse anonymous clients |
+| `VIDEOMIND_YT_COOKIES_FROM_BROWSER` | – | Same, read from a browser profile: `chrome`, `firefox`, … |
 
 ## How it works
 

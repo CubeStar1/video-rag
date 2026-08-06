@@ -15,7 +15,7 @@ export const models: Model[] = [
   { id: 'moonshotai/kimi-k2-instruct', label: 'Kimi K2 Instruct', provider: 'Groq' },
   { id: 'llama3.1-8b', label: 'Llama 3.1 8B', provider: 'Cerebras' },
   { id: 'gpt-oss-120b', label: 'GPT OSS 120B', provider: 'Cerebras' },
-  { id: 'qwen/qwen3-vl-4b', label: 'Gemma 4 E2B', provider: 'LM Studio' },
+  // { id: 'qwen/qwen3-vl-4b', label: 'Gemma 4 E2B', provider: 'LM Studio' },
 ];
 
 export const defaultModel = 'gpt-5.4-mini';
