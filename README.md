@@ -2,8 +2,19 @@
 
 **Fast Augmented Language-based CONversational Video Question Answering.**
 
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![Qdrant](https://img.shields.io/badge/Qdrant-DC244C?logo=qdrant&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white)
+
 Ask questions about your videos and get answers grounded in what was actually said and shown,
 with timestamps and playable clips.
+
+![Agent chat with clip retrieval](frontend/public/landing/falconvqa-agent.png)
 
 - **core/** — the video RAG engine. Chunks a video, runs analyzers per chunk, aggregates to
   video level, indexes it all, then searches or answers questions over it. FastAPI + its own
@@ -19,6 +30,8 @@ Next.js  ──►  /api/agent (AI SDK tools)  ──►  core (FastAPI)  ──
    ├──► Supabase Storage (files → public URL)     └──► Supabase Storage (video bytes)
    └──► Supabase DB (projects, conversations, messages, video_core)
 ```
+
+![Architecture](frontend/public/landing/falcon-vqa-arch.png)
 
 Everything except the vision-language calls and answer synthesis runs locally: BGE embeddings,
 Qdrant (embedded), Whisper, pyannote, Silero VAD, PySceneDetect, CLIP, YOLO and EasyOCR.
