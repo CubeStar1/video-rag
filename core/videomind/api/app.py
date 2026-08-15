@@ -44,16 +44,7 @@ if ui.enabled():
 
 @app.get("/health")
 def health():
-    """Liveness plus what this instance has loaded.
 
-    Storage is probed rather than assumed: a bad key or a missing bucket would
-    otherwise first surface as a failed ingest, minutes later, on a background
-    thread, in a job nobody is watching.
-
-    `youtube.max_quality` is reported for the same reason. Without ffmpeg a
-    YouTube ingest silently arrives at 360p and every analyzer downstream is
-    reading a worse video than the caller thinks they supplied.
-    """
     store_status = storage.status()
     ffmpeg = youtube.ffmpeg_path()
     return {
@@ -72,17 +63,7 @@ def health():
 
 @app.get("/media/{video_id}")
 def media(video_id: str):
-    """Redirect to the video in Storage.
 
-    Kept as an endpoint even though the bucket is public and every response
-    already carries `video_url`: this is the one media URL derivable from a
-    video_id alone, which is all a search hit at detail="minimal" carries. It
-    also stays correct if the bucket is ever made private - only this function
-    changes, to mint a signed URL.
-
-    The hand-rolled Range/206 handling is gone with it. Storage serves ranges
-    correctly, so seeking still works, and the bytes no longer transit Python.
-    """
     url = core.video_url_for(video_id)
     if not url:
         raise HTTPException(404, f"No media for video_id {video_id!r}")
@@ -112,11 +93,7 @@ def list_analyzers():
 
 @app.get("/schema")
 def schema():
-    """What can be searched and filtered.
 
-    Discovery matters more than raw generality for an agent: given a free-form
-    filter object it would otherwise have to guess field names and semantics.
-    """
     return {
         "analyzers": analyzers.available(),
         "exclusive_groups": [sorted(g) for g in analyzers.EXCLUSIVE_GROUPS],
@@ -161,13 +138,7 @@ def get_video(video_id: str):
 
 @app.delete("/videos/{video_id}")
 def delete_video(video_id: str):
-    """Remove a video's vectors, record, bucket objects and cached file.
 
-    Note that `video_id` is a content hash, so two callers who ingested the
-    same bytes are referring to the *same* video here. Whoever owns the
-    application-side rows has to decide that nothing else still points at it
-    before calling this - core has no notion of who else is interested.
-    """
     result = core.delete_video(video_id)
     if result is None:
         raise HTTPException(404, f"No such video {video_id!r}")
@@ -185,12 +156,7 @@ def get_chunks(
     offset: int = Query(0, ge=0),
     verbose: bool = False,
 ):
-    """Stored analyzer output, scoped by analyzer and time range.
 
-    The read counterpart to /query: fetch what was produced rather than
-    searching it. Always bounded, so a caller cannot pull a whole video in
-    one go.
-    """
     try:
         ids = [int(x) for x in chunk_ids.split(",") if x.strip()] if chunk_ids else None
     except ValueError as exc:
@@ -210,7 +176,6 @@ def get_chunks(
 
 @app.get("/videos/{video_id}/aggregates")
 def get_aggregates(video_id: str, aggregator: str | None = None):
-    """Video-level results: summary, chapters, events, stats, entities, and so on."""
     try:
         result = core.get_aggregates(video_id, aggregator_id=aggregator)
     except ValueError as exc:
@@ -224,11 +189,7 @@ def get_aggregates(video_id: str, aggregator: str | None = None):
 def run_aggregates(video_id: str,
                    aggregators_csv: str | None = Form(None, alias="aggregators"),
                    force: bool = Query(True, description="Recompute even if already stored")):
-    """Re-run aggregators over already-analysed output.
 
-    Separate from upload because aggregators read `records/` rather than the
-    video: re-summarising or re-linking after a change costs no re-analysis.
-    """
     if core.record_path_for(video_id) is None:
         raise HTTPException(404, f"No such video {video_id!r}")
     ids = [a.strip() for a in aggregators_csv.split(",") if a.strip()] if aggregators_csv else None
@@ -246,7 +207,6 @@ def run_aggregates(video_id: str,
 
 @app.get("/videos/{video_id}/entities")
 def get_entities(video_id: str, min_appearances: int = Query(1, ge=1)):
-    """People linked across chunks, with their timelines."""
     try:
         result = core.get_aggregates(video_id, aggregator_id="entities")
     except ValueError as exc:
@@ -289,12 +249,7 @@ def _ingest_params(
     cut: float | None,
     semantic: float | None,
 ) -> tuple[list[str], dict]:
-    """Validate the chunking options both ingest routes share.
 
-    Shared so that uploading a file and ingesting a URL cannot drift into
-    accepting different arguments - the only thing that legitimately differs
-    between them is where the bytes come from.
-    """
     analyzer_ids = [a.strip() for a in analyzers_csv.split(",") if a.strip()]
     try:
         analyzers.validate_selection(analyzer_ids)
@@ -321,7 +276,6 @@ def _ingest_params(
 
 
 class IngestRequest(BaseModel):
-    """Ingest by URL. Mirrors the multipart form of POST /videos field for field."""
 
     url: str
     analyzers: str = "default_video"
@@ -350,18 +304,7 @@ async def upload_video(
     min_duration: float = Form(5.0),
     max_duration: float = Form(20.0),
 ):
-    """Upload a video file and start ingestion.
 
-    The file is written to disk, uploaded to Storage, and then analysed from a
-    local copy. Convenient for a browser or curl, but it pushes the whole video
-    through this process and through whatever body-size cap sits in front of
-    it - a large video is better uploaded straight to Storage and ingested with
-    POST /videos/url.
-
-    mode="preset"   -> `preset` names a weighting
-    mode="weights"  -> speaker/silence/cut/semantic set a custom weighting
-    mode="interval" -> `interval` seconds per chunk, min/max not applied
-    """
     analyzer_ids, kwargs = _ingest_params(
         analyzers_csv, mode, preset, interval, speaker, silence, cut, semantic
     )
@@ -386,16 +329,7 @@ async def upload_video(
 
 @app.post("/videos/url", status_code=202)
 def ingest_url(request: IngestRequest):
-    """Ingest a video from any http(s) URL and start analysis.
 
-    The primary path for a frontend: upload straight to Storage, then hand the
-    URL over. A URL that already points into our own bucket needs no special
-    case - the bytes still have to come down to be decoded, and the re-upload
-    is skipped because the object is already there.
-
-    `video_id` is the hash of the bytes, so it is not known until the download
-    finishes; it arrives in the job result along with `video_url`.
-    """
     analyzer_ids, kwargs = _ingest_params(
         request.analyzers, request.mode, request.preset, request.interval,
         request.speaker, request.silence, request.cut, request.semantic,
@@ -440,12 +374,7 @@ class AskRequest(BaseModel):
 
 @app.post("/ask")
 def ask(request: AskRequest):
-    """Answer a question using the video's aggregates as well as its segments.
 
-    `/query` finds segments; this answers questions. The question is routed to
-    whichever aggregates can address it, so "what did the woman in grey do"
-    reaches the entity narratives and "which part is unusual" reaches novelty.
-    """
     if request.analyzer and request.analyzer not in analyzers.available():
         raise HTTPException(400, f"Unknown analyzer {request.analyzer!r}")
     return core.answer(

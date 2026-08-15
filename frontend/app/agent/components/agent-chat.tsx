@@ -26,6 +26,7 @@ import { generateUUID } from "@/app/agent/lib/utils/generate-uuid";
 import { useModelSelection } from "@/app/agent/hooks/use-model-selection";
 import { ModelSelector } from "@/app/agent/components/model-selector";
 import { VideoPicker, VideoChips } from "@/app/agent/components/video-picker";
+import { VoiceInputButton } from "@/app/agent/components/voice-input-button";
 import { UploadDialog } from "@/app/projects/[projectId]/components/upload-dialog";
 import { useProjectVideos } from "@/hooks/use-project-videos";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -124,6 +125,11 @@ export function AgentChat({
     );
   }, []);
 
+  /** Dictation adds to whatever is already typed rather than replacing it. */
+  const appendTranscript = useCallback((text: string) => {
+    setInput((current) => (current.trim() ? `${current.trim()} ${text}` : text));
+  }, []);
+
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
       {/* Header */}
@@ -218,6 +224,11 @@ export function AgentChat({
                 <PlusIcon className="size-4" />
                 Add video
               </button>
+
+              <VoiceInputButton
+                onTranscript={appendTranscript}
+                disabled={isBusy}
+              />
 
               {/* <ModelSelector
                 key={selectedModel}

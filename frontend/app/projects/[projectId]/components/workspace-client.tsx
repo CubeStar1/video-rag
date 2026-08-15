@@ -12,6 +12,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { ModeToggle } from '@/components/global/theme-switcher'
 import { VideoPlayer } from '@/app/agent/components/video-player'
 import { VideoPicker, VideoChips } from '@/app/agent/components/video-picker'
+import { VoiceInputButton } from '@/app/agent/components/voice-input-button'
 import { useProjectVideos, useVideoMutations } from '@/hooks/use-project-videos'
 import { formatDuration } from '@/lib/core/format'
 import type { Project } from '@/app/agent/types'
@@ -52,6 +53,21 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
     input.focus()
     input.setSelectionRange(suggestion.length, suggestion.length)
   }, [])
+
+  /** Dictation adds to whatever is already typed, then hands the caret back. */
+  const appendTranscript = useCallback(
+    (text: string) => {
+      const next = prompt.trim() ? `${prompt.trim()} ${text}` : text
+      setPrompt(next)
+
+      const input = promptRef.current
+      if (!input) return
+      input.focus()
+      // The caret belongs after the dictated text, once React has written it.
+      requestAnimationFrame(() => input.setSelectionRange(next.length, next.length))
+    },
+    [prompt]
+  )
 
   const toggleVideo = useCallback((videoId: string) => {
     setSelectedVideoIds((current) =>
@@ -159,6 +175,7 @@ export function WorkspaceClient({ project, initialVideos }: WorkspaceClientProps
                 onToggle={toggleVideo}
                 onClear={() => setSelectedVideoIds([])}
               />
+              <VoiceInputButton onTranscript={appendTranscript} disabled={isStarting} />
             </div>
             <div className="flex items-center gap-2">
               {selectedVideoIds.length === 0 && readyVideos.length > 0 && (
