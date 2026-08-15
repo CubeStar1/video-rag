@@ -79,11 +79,7 @@ behind the frontend.
 ## 3. Database
 
 Run `frontend/lib/supabase/migrations/schema.sql` in the Supabase SQL editor. It creates
-`projects`, `conversations`, `messages`, `video_core` (the application's view of a
-core-analysed video), the `project-assets` bucket, and RLS policies.
-
-The older `videos` table from the VideoDB era is left in place and is no longer read by
-anything.
+`projects`, `conversations`, `messages`, `video_core`, the `project-assets` bucket, and RLS policies.
 
 ## 4. frontend
 
@@ -95,10 +91,7 @@ npm run dev
 ```
 
 Runs on http://localhost:3000. At minimum `.env.local` needs the three Supabase values, one
-model provider key, and `CORE_API_URL` — which defaults to `http://127.0.0.1:8077`, so only set
-it if you changed the port. `CORE_API_TOKEN` must match `VIDEOMIND_API_TOKEN` in `core/.env`;
-leave both unset for a machine-local dev server.
-
+model provider key, and `CORE_API_URL` — which defaults to `http://127.0.0.1:8077`
 Both servers need to be running: the frontend alone cannot ingest or retrieve.
 
 ---
