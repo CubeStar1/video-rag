@@ -7,7 +7,7 @@ what must be separate and collapse what must collapse.
 
 import pytest
 
-from videomind.vectordb.store import config_key, point_id
+from src.vectordb.store import config_key, point_id
 
 VIDEO = "abc123def4567890"
 

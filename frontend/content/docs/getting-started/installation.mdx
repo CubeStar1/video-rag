@@ -115,15 +115,12 @@ client that has no use for HTML. It drops the `/` route and nothing else.
 
 ## 2. Database
 
-Run both migrations in the Supabase SQL editor:
+Run `frontend/lib/supabase/migrations/schema.sql` in the Supabase SQL editor. It creates
+`projects`, `conversations`, `messages`, `video_core`, the `project-assets` bucket,
+`update_updated_at()`, and the RLS policies.
 
-| File | Creates |
-|---|---|
-| `frontend/lib/supabase/migrations/schema.sql` | `projects`, `conversations`, `messages`, the `project-assets` bucket, `update_updated_at()`, RLS policies |
-| `frontend/lib/supabase/migrations/002_video_core.sql` | `video_core` — the application's view of a core-analysed video |
-
-`002_video_core.sql` is purely additive. The older `videos` table (from the VideoDB era) is left
-in place and is no longer read by anything.
+The older `videos` table (from the VideoDB era) is left in place and is no longer read by
+anything.
 
 ### The `video_core` table
 

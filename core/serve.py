@@ -30,7 +30,7 @@ def main() -> None:
     print(f"  docs  http://{args.host}:{args.port}/docs")
 
     uvicorn.run(
-        "videomind.api.app:app",
+        "src.api.app:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

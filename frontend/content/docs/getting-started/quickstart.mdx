@@ -71,14 +71,11 @@ reachable. Interactive API docs live at `/docs`.
 
 ### Set up the database
 
-Run these two files in the Supabase SQL editor, in order:
+Run `frontend/lib/supabase/migrations/schema.sql` in the Supabase SQL editor. It creates
+`projects`, `conversations`, `messages`, `video_core` (the application's view of a video
+analysed by core), the `project-assets` bucket, and the RLS policies.
 
-1. `frontend/lib/supabase/migrations/schema.sql` — `projects`, `conversations`, `messages`, the
-   `project-assets` bucket, and the RLS policies.
-2. `frontend/lib/supabase/migrations/002_video_core.sql` — the `video_core` table, which is the
-   application's view of a video analysed by core.
-
-Both are safe to re-run: everything is `IF NOT EXISTS` / `DROP … IF EXISTS`.
+Safe to re-run: everything is `IF NOT EXISTS` / `DROP … IF EXISTS`.
 
 </Step>
 

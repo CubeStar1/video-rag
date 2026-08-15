@@ -90,7 +90,7 @@ def chunk_store(tmp_path, embedder, monkeypatch):
     scoped delete are the behaviours under test, and a mocked store would only
     assert that the test's own mock was called.
     """
-    from videomind.vectordb import store as store_module
+    from src.vectordb import store as store_module
 
     monkeypatch.setattr(store_module, "get_embedder", lambda *a, **k: embedder)
     store = store_module.ChunkStore(path=str(tmp_path / "qdrant"))
@@ -119,7 +119,7 @@ def scene(description: str, **extra) -> dict:
 
 def indexable(chunk_id: int, start: float, end: float, output: dict) -> dict:
     """What `ChunkStore.add_chunks` wants: the output plus its rendered fields."""
-    from videomind.vectordb.render import render_structured_scene
+    from src.vectordb.render import render_structured_scene
 
     return {
         "id": chunk_id,
@@ -171,7 +171,7 @@ def sample_record(tmp_path):
 @pytest.fixture
 def record_on_disk(sample_record):
     """`sample_record` written where `record_path_for` will find it."""
-    from videomind.api import core as api_core
+    from src.api import core as api_core
 
     api_core.RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     path = api_core.RECORDS_DIR / f"{sample_record['video_id']}.json"
@@ -189,7 +189,7 @@ def client():
     """FastAPI test client. No token configured, so routes are open."""
     from fastapi.testclient import TestClient
 
-    from videomind.api.app import app
+    from src.api.app import app
 
     with TestClient(app) as test_client:
         yield test_client

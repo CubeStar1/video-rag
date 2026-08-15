@@ -8,8 +8,8 @@ redistribution, which is checked here directly rather than inferred from a clip.
 
 import pytest
 
-from videomind.chunk import _merge_short_chunks, _split_long_chunks, chunk_video
-from videomind.chunking import WEIGHTS, boundaries_to_chunks, fuse
+from src.chunk import _merge_short_chunks, _split_long_chunks, chunk_video
+from src.chunking import WEIGHTS, boundaries_to_chunks, fuse
 
 DURATION = 60.0
 
@@ -189,7 +189,7 @@ def test_weights_must_include_something_above_zero():
 
 
 def test_every_preset_weights_every_signal():
-    from videomind.chunk import SIGNALS
+    from src.chunk import SIGNALS
 
     for name, weights in WEIGHTS.items():
         assert set(weights) == set(SIGNALS), f"preset {name} is missing a signal"

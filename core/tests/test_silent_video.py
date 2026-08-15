@@ -14,10 +14,10 @@ in a way a binary blob does not.
 import numpy as np
 import pytest
 
-from videomind import audio_extract, poster
-from videomind.boundaries import diarization, vad
-from videomind.chunk import chunk_video
-from videomind.extractors.audio import transcript as whisper
+from src import audio_extract, poster
+from src.boundaries import diarization, vad
+from src.chunk import chunk_video
+from src.extractors.audio import transcript as whisper
 
 FPS = 10
 SECONDS = 2.0

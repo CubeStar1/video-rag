@@ -6,7 +6,7 @@ AT-26 (the three levels rank identically while the payload grows) and AT-36
 
 import pytest
 
-from videomind.api import core as api_core
+from src.api import core as api_core
 
 HIT = {
     "video_id": "abc123def4567890",

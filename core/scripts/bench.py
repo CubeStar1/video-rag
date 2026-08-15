@@ -10,11 +10,11 @@ warnings.filterwarnings("ignore")
 
 import torch
 
-from videomind import audio_extract, store
-from videomind.boundaries import diarization, scenes, semantic, vad
-from videomind.chunking import WEIGHTS, boundaries_to_chunks, fuse
-from videomind.chunk import _merge_short_chunks, _split_long_chunks
-from videomind.export import export_chunks
+from src import audio_extract, store
+from src.boundaries import diarization, scenes, semantic, vad
+from src.chunking import WEIGHTS, boundaries_to_chunks, fuse
+from src.chunk import _merge_short_chunks, _split_long_chunks
+from src.export import export_chunks
 
 VIDEO = str(Path(__file__).resolve().parent.parent / "media" / "test.mp4")
 PRESET = "video"

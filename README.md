@@ -23,9 +23,6 @@ Next.js  ──►  /api/agent (AI SDK tools)  ──►  core (FastAPI)  ──
 Everything except the vision-language calls and answer synthesis runs locally: BGE embeddings,
 Qdrant (embedded), Whisper, pyannote, Silero VAD, PySceneDetect, CLIP, YOLO and EasyOCR.
 
-> `backend/` and `API.md` are the old VideoDB-based service. Nothing calls them any more —
-> they are kept only as a record of what core replaced.
-
 ---
 
 ## 1. Prerequisites
@@ -33,6 +30,7 @@ Qdrant (embedded), Whisper, pyannote, Silero VAD, PySceneDetect, CLIP, YOLO and 
 | What | Notes |
 |---|---|
 | Python 3.13 + a CUDA GPU | For core. Developed on torch 2.11.0+cu130 and an RTX 4060 (8 GB) |
+| [uv](https://docs.astral.sh/uv/) | Manages core's Python environment |
 | Node 20+ | For the frontend |
 | Supabase project | URL, anon key, and service-role key |
 | OpenAI API key | Core's VLM calls and answer synthesis |
@@ -42,18 +40,10 @@ Qdrant (embedded), Whisper, pyannote, Silero VAD, PySceneDetect, CLIP, YOLO and 
 
 ```bash
 cd core
-pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 \
-    --index-url https://download.pytorch.org/whl/cu130
-pip install -r requirements.txt      # or: uv sync
+uv sync                              # pulls torch from the CUDA 13.0 index on Linux/Windows
+cp .env.example .env                 # then fill in OPENAI_API_KEY, SUPABASE_URL, etc.
 
-cat > .env <<'EOF'
-OPENAI_API_KEY=sk-...
-HF_TOKEN=hf_...                      # diarization only
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-EOF
-
-python serve.py                      # http://127.0.0.1:8077
+uv run serve.py                      # http://127.0.0.1:8077
 ```
 
 `HF_TOKEN` is only needed for the `diarization` analyzer, and its model is gated — accept the
@@ -70,20 +60,17 @@ Verify: http://127.0.0.1:8077/health → `status: "ok"` with `storage.ok: true`,
 analyzers and aggregators this instance loaded. `degraded` means the key is wrong or the bucket
 is missing — reads still work, ingest will not. API docs: http://127.0.0.1:8077/docs.
 
-`python serve.py --api-only` drops core's own web UI and nothing else, which is what you want
+`uv run serve.py --api-only` drops core's own web UI and nothing else, which is what you want
 behind the frontend.
 
 ## 3. Database
 
-Run both migrations in the Supabase SQL editor:
+Run `frontend/lib/supabase/migrations/schema.sql` in the Supabase SQL editor. It creates
+`projects`, `conversations`, `messages`, `video_core` (the application's view of a
+core-analysed video), the `project-assets` bucket, and RLS policies.
 
-| File | Creates |
-|---|---|
-| `frontend/lib/supabase/migrations/schema.sql` | `projects`, `conversations`, `messages`, the `project-assets` bucket, RLS policies |
-| `frontend/lib/supabase/migrations/002_video_core.sql` | `video_core` — the application's view of a core-analysed video |
-
-`002_video_core.sql` is purely additive. The older `videos` table from the VideoDB era is left
-in place and is no longer read by anything.
+The older `videos` table from the VideoDB era is left in place and is no longer read by
+anything.
 
 ## 4. frontend
 
@@ -106,7 +93,7 @@ Both servers need to be running: the frontend alone cannot ingest or retrieve.
 ## Using it
 
 1. **Create a project** at `/projects` → "New Project". You land on the project workspace.
-2. **Upload videos** — "Upload" (top right). Drop files in, or paste direct video URLs. Files go
+2. **Upload videos** — Upload using the upload videos button. Drop files in, or paste direct video URLs. Files go
    to Supabase Storage and core is handed the public URL; URLs core downloads itself. Pick the
    analyzers and the chunking mode in the same dialog — the analyzer list is fetched from core,
    not hardcoded.
@@ -134,10 +121,6 @@ Clips open in the right-hand **artifact panel**: a player on top, the clip list 
 row to play that moment; "Play all" plays them back to back. The chat message stays short and
 cites `m:ss` timestamps.
 
-Core has no users, no projects and no row-level security — scoping is entirely the frontend's
-job. Every tool resolves the video ids it may touch through one choke point that checks project
-ownership under RLS, so core is always called with explicit, already-authorised ids.
-
 ---
 
 ## Docs
@@ -151,10 +134,3 @@ Alongside the code:
 - [core/README.md](core/README.md) — how the engine works
 - [core/docs/ENDPOINTS.md](core/docs/ENDPOINTS.md) — core's HTTP API
 - [core/docs/COMMANDS.md](core/docs/COMMANDS.md) — running, resetting, inspecting
-
-## Resetting
-
-Everything core writes lives under `core/data/` — records, vectors, the video cache, model
-weights, uploads. Deleting it is a full reset. Application rows survive in Postgres, so the
-videos will then show as `failed` with a message telling you to re-index; that is the intended
-recovery path.

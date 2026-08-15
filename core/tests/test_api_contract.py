@@ -8,9 +8,9 @@ without a GPU or a model provider.
 
 import pytest
 
-from videomind import aggregators, analyzers
-from videomind.vectordb.render import VECTOR_FIELDS
-from videomind.vectordb.store import FILTER_SPEC
+from src import aggregators, analyzers
+from src.vectordb.render import VECTOR_FIELDS
+from src.vectordb.store import FILTER_SPEC
 
 
 def test_schema_is_reachable(client):
@@ -65,7 +65,7 @@ def test_schema_publishes_aggregator_dependencies(client):
 
 
 def test_schema_advertises_every_detail_level(client):
-    from videomind.api.core import DETAIL_LEVELS
+    from src.api.core import DETAIL_LEVELS
 
     assert set(client.get("/schema").json()["detail_levels"]) == set(DETAIL_LEVELS)
 
@@ -95,7 +95,7 @@ def test_analyzers_endpoint_matches_the_registry(client):
 def test_health_reports_what_this_instance_has_loaded(client, monkeypatch):
     """Storage is probed rather than assumed, so the probe is stubbed here --
     what is under test is the shape, not the network."""
-    from videomind import storage
+    from src import storage
 
     monkeypatch.setattr(storage, "status", lambda: {"ok": True, "bucket": "videos", "error": None})
 
@@ -110,7 +110,7 @@ def test_health_reports_degraded_rather_than_failing_when_storage_is_unreachable
 ):
     """A bad key would otherwise first surface as a failed ingest minutes later,
     on a background thread, in a job nobody is watching."""
-    from videomind import storage
+    from src import storage
 
     monkeypatch.setattr(
         storage, "status",
@@ -213,7 +213,7 @@ def test_routes_are_guarded_when_a_token_is_configured(monkeypatch):
     boundary that stops the port from being one."""
     from fastapi.testclient import TestClient
 
-    from videomind.api import app as app_module
+    from src.api import app as app_module
 
     monkeypatch.setattr(app_module, "API_TOKEN", "s3cret")
     with TestClient(app_module.app) as guarded:
@@ -224,8 +224,8 @@ def test_routes_are_guarded_when_a_token_is_configured(monkeypatch):
 def test_liveness_and_docs_stay_open_so_a_deployment_can_be_checked(monkeypatch):
     from fastapi.testclient import TestClient
 
-    from videomind import storage
-    from videomind.api import app as app_module
+    from src import storage
+    from src.api import app as app_module
 
     monkeypatch.setattr(app_module, "API_TOKEN", "s3cret")
     monkeypatch.setattr(storage, "status", lambda: {"ok": True, "bucket": "v", "error": None})
@@ -238,7 +238,7 @@ def test_liveness_and_docs_stay_open_so_a_deployment_can_be_checked(monkeypatch)
 def test_a_wrong_token_is_refused(monkeypatch):
     from fastapi.testclient import TestClient
 
-    from videomind.api import app as app_module
+    from src.api import app as app_module
 
     monkeypatch.setattr(app_module, "API_TOKEN", "s3cret")
     with TestClient(app_module.app) as guarded:

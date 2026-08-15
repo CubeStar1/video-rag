@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from videomind import aggregators
-from videomind.api import core as api_core
+from src import aggregators
+from src.api import core as api_core
 
 
 class CountingAggregator:

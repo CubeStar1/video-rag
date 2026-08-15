@@ -88,7 +88,7 @@ def test_searching_an_unknown_vector_space_is_rejected(chunk_store):
 
 
 def test_every_declared_vector_space_is_searchable(chunk_store):
-    from videomind.vectordb.render import VECTOR_FIELDS
+    from src.vectordb.render import VECTOR_FIELDS
 
     index(chunk_store, chunks=shopper_chunks())
     for field in VECTOR_FIELDS:

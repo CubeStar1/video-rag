@@ -19,10 +19,10 @@ from pathlib import Path
 os.environ.setdefault("USE_TF", "0")
 warnings.filterwarnings("ignore")
 
-from videomind import analyzers
-from videomind.api.core import RECORDS_DIR
-from videomind.paths import VECTOR_DIR
-from videomind.vectordb import ChunkStore
+from src import analyzers
+from src.api.core import RECORDS_DIR
+from src.paths import VECTOR_DIR
+from src.vectordb import ChunkStore
 
 if VECTOR_DIR.exists():
     shutil.rmtree(VECTOR_DIR)

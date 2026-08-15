@@ -30,7 +30,7 @@ const highlights: Highlight[] = [
   {
     text: 'Scene-Aware Chunking',
     description: 'Speaker turns, silence, hard cuts, and semantic drift are fused into boundaries that follow the content — not a fixed clock.',
-    image: '/landing/video-mind-arch.png',
+    image: '/landing/falcon-vqa-arch.png',
   },
   {
     text: 'Vision + Speech Index',

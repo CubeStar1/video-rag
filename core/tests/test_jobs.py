@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from videomind.api import core as api_core, jobs
+from src.api import core as api_core, jobs
 
 
 def wait_for(job_id, status, timeout=5.0):

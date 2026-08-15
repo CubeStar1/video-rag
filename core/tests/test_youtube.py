@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from videomind import youtube
+from src import youtube
 
 
 @pytest.mark.parametrize(

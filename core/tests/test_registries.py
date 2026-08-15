@@ -6,7 +6,7 @@ is discovered, not hard-coded) and the dependency ordering that AT-38 relies on.
 
 import pytest
 
-from videomind import aggregators, analyzers
+from src import aggregators, analyzers
 
 
 def test_registry_key_matches_each_analyzer_id():

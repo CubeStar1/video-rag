@@ -7,7 +7,7 @@ the response says it happened.
 
 import pytest
 
-from videomind.vectordb.store import FILTER_SPEC, INDEXED_FIELDS, build_conditions
+from src.vectordb.store import FILTER_SPEC, INDEXED_FIELDS, build_conditions
 
 
 def keys_of(conditions):
