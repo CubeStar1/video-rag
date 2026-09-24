@@ -11,7 +11,7 @@ dependencies = [
     "faster-whisper==1.2.1",
     "gliner==0.2.28",
     "numpy==2.3.5",
-    "nvidia-cublas-cu12>=12.9.2.10",
+    "nvidia-cublas-cu12>=12.9.2.10; sys_platform != 'darwin'",
     "open-clip-torch==3.3.0",
     "openai==2.48.0",
     "opencv-python==4.13.0.92",
@@ -45,6 +45,19 @@ testpaths = ["tests"]
 # but happens once per session. Nothing here loads an embedding model or opens
 # a video; the cases that need a GPU and a live provider are the manual ones.
 addopts = "-q --strict-markers"
+
+[tool.uv]
+# PyTorch ships macOS wheels for Apple Silicon only, so Intel Macs are left out
+# of the lock rather than failing at install time. Requiring the arm64 Mac
+# environment makes `uv lock` fail loudly if any dependency lacks a wheel there.
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
